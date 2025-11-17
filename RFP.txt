@@ -1,0 +1,368 @@
+
+## RFP: Build “CodeVision” – Codebase Visibility Tool for Non-Engineers
+
+You are an AI coding assistant acting as a **full-stack product team** (architect, backend, frontend, DevOps). Your task is to design and implement a **v1/MVP** of a web application called **CodeVision**.
+
+CodeVision’s purpose:
+
+> Turn a complex codebase into a **visual, explainable, and inspectable “map”** that **non-software engineers** can understand and use to make decisions about quality, risk, and roadmap.
+
+The emphasis is **visibility**: architecture, quality, tests, tech debt, and deployment.
+
+---
+
+### 1. Target Users & Personas
+
+CodeVision is for **non-technical or semi-technical stakeholders** who need to make decisions about a delivered codebase.
+
+Please design UX and outputs consistent with these personas:
+
+1. **Design Firm PM – “Alex”**
+
+   * Non-technical project manager at a design/creative firm.
+   * Needs to:
+
+     * Understand roughly *what* was built.
+     * Spot red flags in quality or maintainability.
+     * Communicate in **plain language** with clients and vendors.
+
+2. **Creative Director / Strategist – “Jordan”**
+
+   * Thinks in user flows, features, and business goals.
+   * Needs:
+
+     * A high-level story of the system.
+     * Visuals that show **major components and flows**.
+     * Clear insights into **test coverage (0–100%)** and **risk areas** that could affect future roadmap items.
+
+3. **Vendor Evaluation Lead – “Gwen”**
+
+   * Evaluates codebases from different dev shops.
+   * Needs:
+
+     * A way to compare codebases on **structure, test coverage, tech debt, and deployment clarity**.
+     * Evidence she can show leadership to justify switching vendors or demanding refactors.
+
+4. **Friendly Engineer Ally – “Sam”**
+
+   * Lightly technical ally who can go deeper when needed.
+   * Uses CodeVision’s detailed views to verify and support the non-technical users.
+
+---
+
+### 2. High-Level Functionality (MVP Scope)
+
+Build an MVP that can:
+
+1. **Ingest a codebase**:
+
+   * Accept a **Git repo URL** (e.g., GitHub) or a **zip upload**.
+   * Analyze **one branch / latest commit** for MVP.
+
+2. **Analyze the codebase** and produce:
+
+   * A **plain-language overview** of what the system does.
+   * A **visual component/architecture map**.
+   * **Core metrics & visibility**:
+
+     * **Detect languages & frameworks** (e.g., JavaScript/TypeScript, Python; React, Django, Express, etc.).
+     * **Run basic metrics**:
+
+       * File counts
+       * Lines of code
+       * Approximate complexity / “heaviness”
+     * **Identify entry points** (critical for security and understanding):
+
+       * Public APIs
+       * Front-end apps (e.g., main SPA entry files)
+       * Background workers / cron jobs / services
+   * **Test presence & coverage**:
+
+     * Highlight tests discovered.
+     * Estimate **test coverage as a 0–100% metric** (can be approximate or heuristic for MVP; be transparent about how it’s computed).
+   * **Tech debt indicators**:
+
+     * Large “god files” and highly complex modules.
+     * Duplicate code or suspiciously similar structures.
+     * “TODO”, “FIXME”, “HACK”, and similar comments.
+     * Very old or unmaintained dependencies (if package metadata is present).
+   * **Deployment & IaC visibility**:
+
+     * Detect **Infrastructure-as-Code** (e.g., Terraform, CloudFormation, Dockerfiles, Kubernetes manifests).
+     * Provide a **deployment view**:
+
+       * What environments/services are defined?
+       * How many services/containers?
+       * High-level topology (e.g., web app → API → DB).
+     * Indicate whether deployment is **well-described vs opaque**.
+
+3. **Present everything visually for non-engineers**:
+
+   * A **dashboard** that prioritizes:
+
+     * “What is this system?”
+     * “How is it structured?”
+     * “How well is it tested?”
+     * “Where does it look messy or risky?”
+     * “How is it deployed?”
+
+4. **Report generation** (simple MVP):
+
+   * Generate a **shareable report** view (HTML) summarizing:
+
+     * Overview
+     * Architecture map snapshot
+     * Test coverage
+     * Tech debt highlights
+     * Deployment/IaC visibility
+
+---
+
+### 3. Detailed Functional Requirements
+
+#### 3.1 Ingestion
+
+* Support:
+
+  * Public Git repos via URL (HTTPS).
+  * Zip file upload (up to a reasonable size; you choose a default like 100–200 MB).
+* On ingestion:
+
+  * Unpack/clone repo.
+  * Perform a **static analysis pass** over the file tree.
+
+#### 3.2 Automated Analysis – Code Overview
+
+Implement a backend analysis module that:
+
+1. **Detects languages & frameworks**
+
+   * Identify primary languages (by file extensions and content).
+   * Infer frameworks from:
+
+     * Dependencies (e.g., package.json, requirements.txt, pyproject.toml)
+     * Known directory structures and config files.
+   * Output a structured summary, e.g.:
+
+     ```json
+     {
+       "languages": ["TypeScript", "Python"],
+       "frameworks": ["React", "FastAPI"]
+     }
+     ```
+
+2. **Runs basic metrics**
+
+   * For each file:
+
+     * LOC (lines of code)
+     * Rough complexity indicator (e.g., function count, branching heuristics)
+   * Aggregate them into **module-level buckets** (group by folder/component).
+
+3. **Identifies entry points (CRITICAL FOR SECURITY & COMPREHENSION)**
+
+   * Detect:
+
+     * Web/API entry points (e.g., routes/endpoints).
+     * Front-end main entry files (e.g., index.tsx / main.jsx).
+     * Background jobs / workers if obvious.
+   * Surface these in a dedicated **“Entry Points”** section:
+
+     * “These are the main ways the outside world can interact with this system.”
+
+#### 3.3 Tests & Coverage Visibility
+
+* Detect test files based on:
+
+  * Common naming patterns (`*.test.*`, `*.spec.*` etc.).
+  * Test directories (`tests/`, `__tests__/`).
+* Estimate **test coverage 0–100%**, even heuristically:
+
+  * Example heuristic (for MVP):
+
+    * coverage ≈ (# of files with a test counterpart) / (total # of files that look like business logic).
+* Show:
+
+  * Overall coverage percentage.
+  * Coverage by module/component.
+  * A simple legend (e.g., 0–20% Low, 20–60% Medium, 60–100% High).
+
+#### 3.4 Tech Debt Detection
+
+Create a **Tech Debt Panel** for each analyzed repo, including:
+
+* **Heuristics to detect tech debt**:
+
+  * Very large or complex files (top N by size/complexity).
+  * Modules with many responsibilities.
+  * Duplicate or near-duplicate code segments (basic detection is fine).
+  * “TODO”, “FIXME”, “HACK”, “XXX” comments, etc.
+  * Outdated dependencies (if lockfiles / manifests exist).
+* Summarize in human language:
+
+  * “These areas look like potential tech debt hotspots.”
+  * Provide links to the specific files/modules.
+
+#### 3.5 Deployment & IaC Visibility
+
+* Detect presence of **IaC and deployment descriptors**, such as:
+
+  * Dockerfiles
+  * docker-compose.yaml
+  * Kubernetes manifests (e.g., `deployment.yaml`, `service.yaml`)
+  * Terraform configs (`*.tf`)
+  * CloudFormation templates (`*.json`, `*.yaml` with recognizable schemas)
+* Build a **Deployment View**:
+
+  * Show whether the repo appears to define:
+
+    * Container images
+    * Multi-service layouts
+    * External resources (DBs, queues, etc.) if guessable
+  * Summarize in plain language:
+
+    * “The system defines 3 Docker containers and 1 Postgres database.”
+  * Indicate **visibility quality**:
+
+    * Clear IaC (GOOD)
+    * Partial hints
+    * No IaC found (OPAQUE)
+
+#### 3.6 Visual & UX Requirements (Visibility First)
+
+Design the UI with **non-engineers** in mind:
+
+1. **Landing Dashboard for a Repo**
+
+   * Hero summary in plain English:
+
+     * What the system does.
+     * Main components.
+   * Key high-level indicators:
+
+     * Languages & frameworks
+     * Test coverage (0–100%)
+     * Tech debt summary
+     * Deployment visibility status (e.g., “Clear IaC”, “Limited clues”, “No IaC”)
+   * Big, clear labels and short explanations.
+
+2. **Architecture / Component Map**
+
+   * Visual map of major components/modules and their relationships.
+   * Nodes = modules/components.
+   * Edges = imports/communications.
+   * Hover/click to see:
+
+     * Explanation in plain language.
+     * Files included in the module.
+     * Test coverage for that module.
+     * Tech debt flags.
+
+3. **Tech Debt Panel**
+
+   * Sortable list of:
+
+     * Heaviest modules
+     * Files with many TODO/FIXME/etc.
+     * Areas with low/no tests.
+   * Each item has:
+
+     * Plain-language explanation.
+     * Link back to the architecture map.
+
+4. **Deployment View**
+
+   * Simple diagram or structured list of services/resources inferred from IaC.
+   * Include:
+
+     * “What’s deployed where?” (even if approximate)
+     * Indicators if the deployment story is missing/unclear.
+
+5. **Report View**
+
+   * A single-page, shareable HTML report:
+
+     * Overview
+     * Architecture snapshot
+     * Test coverage summary
+     * Tech debt summary
+     * Deployment visibility summary
+
+---
+
+### 4. Technical Guidance (You Choose Exact Stack)
+
+You may choose a reasonable, modern stack geared toward rapid prototyping, for example:
+
+* **Backend**: Node.js/TypeScript or Python (FastAPI/Flask)
+* **Frontend**: React (TypeScript) with a simple component library.
+* **Visualization**: D3.js or a React graph library for maps/diagrams.
+
+Please:
+
+* Propose your chosen stack in a `ARCHITECTURE.md`.
+* Structure the project with:
+
+  * `/backend`
+  * `/frontend`
+  * Shared schema/types where helpful.
+* Include basic unit tests for the main analysis modules.
+
+---
+
+### 5. Deliverables from the Code Generator
+
+When you respond, please provide:
+
+1. **High-level architecture description**
+
+   * Chosen stack.
+   * Main services/modules.
+   * Data flow between ingestion, analysis, and frontend.
+
+2. **Repository structure**
+
+   * A tree of folders/files you will create.
+
+3. **Core implementation (code)**
+
+   * Backend:
+
+     * Ingestion endpoints.
+     * Static analysis logic for:
+
+       * Language & framework detection.
+       * Metrics collection.
+       * Entry-point detection.
+       * Test coverage estimation.
+       * Tech debt heuristics.
+       * IaC/deployment detection.
+   * Frontend:
+
+     * Dashboard UI.
+     * Architecture map visualization.
+     * Tech debt panel.
+     * Deployment view.
+     * Report view.
+
+4. **Instructions to run**
+
+   * `README.md` with:
+
+     * Setup steps.
+     * Commands to run backend & frontend.
+     * Sample/demo script: how to ingest a sample repo and view results.
+
+5. **Notes on limitations & future enhancements**
+
+   * Where heuristics are approximate.
+   * How you would improve coverage analysis, tech-debt detection, and deployment modelling in future versions.
+
+---
+
+Use this RFP to generate **both**:
+
+* The **code and structure** for the MVP implementation.
+* The **documentation and explanations** so a human team can understand, extend, and demo CodeVision.
+
+---
