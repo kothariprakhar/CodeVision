@@ -1,7 +1,7 @@
-import { getProject, updateProjectStatus } from '../repositories/projects';
+import { getProject, updateProjectStatus, updateProjectRepoPath } from '../repositories/projects';
 import { getProjectDocuments } from '../repositories/documents';
 import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/analysis';
-import { cloneRepository, cleanupClone, getRelevantFiles } from './github';
+import { cloneRepository, getRelevantFiles } from './github';
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 
@@ -22,8 +22,6 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     return { success: false, error: 'No documents uploaded. Please upload requirements documents first.' };
   }
 
-  let clonePath: string | null = null;
-
   try {
     // Update status to analyzing
     updateProjectStatus(projectId, 'analyzing');
@@ -32,12 +30,16 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     deleteProjectAnalysis(projectId);
 
     // Clone the repository
-    const cloneResult = await cloneRepository(project.github_url, project.github_token);
+    const cloneResult = await cloneRepository(project.github_url, project.github_token, project.id);
     if (!cloneResult.success || !cloneResult.path) {
       updateProjectStatus(projectId, 'failed');
       return { success: false, error: cloneResult.error || 'Failed to clone repository' };
     }
-    clonePath = cloneResult.path;
+
+    // Update project with the persistent repo path
+    updateProjectRepoPath(project.id, cloneResult.path);
+
+    const clonePath = cloneResult.path;
 
     // Parse all uploaded documents
     const documentPaths = documents.map(doc => doc.file_path);
@@ -86,10 +88,5 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
       success: false,
       error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
     };
-  } finally {
-    // Always clean up cloned repo
-    if (clonePath) {
-      cleanupClone(clonePath);
-    }
   }
 }

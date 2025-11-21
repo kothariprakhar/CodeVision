@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createProject, getAllProjects } from '@/lib/repositories/projects';
 import { validateGitHubAccess } from '@/lib/services/github';
+import { analyzeProject } from '@/lib/services/analyzer';
 import { z } from 'zod';
 
 const CreateProjectSchema = z.object({
@@ -61,7 +62,12 @@ export async function POST(request: NextRequest) {
       github_token: is_public ? '' : github_token,
     });
 
-    return NextResponse.json(project, { status: 201 });
+    // Start auto-analysis in background (don't await)
+    analyzeProject(project.id).catch(err => {
+      console.error('Auto-analysis failed:', err);
+    });
+
+    return NextResponse.json({ ...project, status: 'analyzing' }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to create project' },

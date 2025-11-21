@@ -1,9 +1,8 @@
 import simpleGit, { SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 
-const TEMP_DIR = path.join(process.cwd(), 'temp');
+const REPOS_DIR = path.join(process.cwd(), 'data', 'repos');
 
 export interface CloneResult {
   success: boolean;
@@ -50,39 +49,40 @@ export async function validateGitHubAccess(
 
 export async function cloneRepository(
   repoUrl: string,
-  token: string
+  token: string,
+  projectId: string
 ): Promise<CloneResult> {
-  // Ensure temp directory exists
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true });
+  // Ensure repos directory exists
+  if (!fs.existsSync(REPOS_DIR)) {
+    fs.mkdirSync(REPOS_DIR, { recursive: true });
   }
 
-  const cloneId = uuidv4();
-  const clonePath = path.join(TEMP_DIR, cloneId);
+  const clonePath = path.join(REPOS_DIR, projectId);
+
+  // Clean up existing clone if present
+  if (fs.existsSync(clonePath)) {
+    fs.rmSync(clonePath, { recursive: true, force: true });
+  }
 
   try {
     let cloneUrl: string;
 
     if (token) {
-      // Construct authenticated URL for private repos
       const urlObj = new URL(repoUrl);
       cloneUrl = `https://${token}@${urlObj.host}${urlObj.pathname}`;
     } else {
-      // Use plain URL for public repos
       cloneUrl = repoUrl;
     }
 
     const git: SimpleGit = simpleGit();
 
-    // Clone with timeout (5 minutes)
     await git.clone(cloneUrl, clonePath, [
-      '--depth=1', // Shallow clone for speed
+      '--depth=1',
       '--single-branch',
     ]);
 
     return { success: true, path: clonePath };
   } catch (error) {
-    // Clean up on failure
     if (fs.existsSync(clonePath)) {
       fs.rmSync(clonePath, { recursive: true, force: true });
     }
@@ -93,10 +93,15 @@ export async function cloneRepository(
   }
 }
 
-export function cleanupClone(clonePath: string): void {
-  if (fs.existsSync(clonePath)) {
-    fs.rmSync(clonePath, { recursive: true, force: true });
+export function cleanupProjectRepo(projectId: string): void {
+  const repoPath = path.join(REPOS_DIR, projectId);
+  if (fs.existsSync(repoPath)) {
+    fs.rmSync(repoPath, { recursive: true, force: true });
   }
+}
+
+export function getProjectRepoPath(projectId: string): string {
+  return path.join(REPOS_DIR, projectId);
 }
 
 export function getRelevantFiles(repoPath: string): string[] {

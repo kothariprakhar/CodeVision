@@ -23,12 +23,21 @@ export default db;
 
 export type ProjectStatus = 'pending' | 'analyzing' | 'completed' | 'failed';
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  responseType: 'quick' | 'detailed';
+}
+
 export interface Project {
   id: string;
   name: string;
   description: string | null;
   github_url: string;
   github_token: string;
+  repo_path: string | null;
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
@@ -48,6 +57,8 @@ export interface AnalysisResult {
   project_id: string;
   summary: string;
   findings: string; // JSON string
+  architecture: string; // JSON string
+  chat_history: string; // JSON string
   raw_response: string;
   analyzed_at: string;
 }

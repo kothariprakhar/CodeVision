@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      analysis_id: result.analysisId,
+      id: result.analysisId,
+      message: 'Analysis completed',
     });
   } catch (error) {
     console.error('Analysis error:', error);

@@ -6,16 +6,24 @@ export interface CreateProjectInput {
   description?: string;
   github_url: string;
   github_token: string;
+  repo_path?: string;
 }
 
 export function createProject(input: CreateProjectInput): Project {
   const id = uuidv4();
   const stmt = db.prepare(`
-    INSERT INTO projects (id, name, description, github_url, github_token, status)
-    VALUES (?, ?, ?, ?, ?, 'pending')
+    INSERT INTO projects (id, name, description, github_url, github_token, repo_path)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  stmt.run(id, input.name, input.description || null, input.github_url, input.github_token);
+  stmt.run(
+    id,
+    input.name,
+    input.description || null,
+    input.github_url,
+    input.github_token,
+    input.repo_path || null
+  );
 
   return getProject(id)!;
 }
@@ -37,6 +45,13 @@ export function updateProjectStatus(id: string, status: ProjectStatus): void {
     WHERE id = ?
   `);
   stmt.run(status, id);
+}
+
+export function updateProjectRepoPath(projectId: string, repoPath: string): void {
+  const stmt = db.prepare(`
+    UPDATE projects SET repo_path = ?, updated_at = datetime('now') WHERE id = ?
+  `);
+  stmt.run(repoPath, projectId);
 }
 
 export function deleteProject(id: string): void {

@@ -25,10 +25,10 @@ export async function analyzeCodeAlignment(input: AnalysisInput): Promise<Analys
     .map(doc => `### ${doc.filename}\n\n${doc.content}`)
     .join('\n\n---\n\n');
 
-  // Build the code context (limit to first 50 files, ~100KB total)
+  // Build the code context (limit to first 50 files, ~30KB total to stay under token limits)
   let codeContext = '';
   let totalSize = 0;
-  const maxSize = 100000; // 100KB limit
+  const maxSize = 30000; // 30KB limit (~7500 tokens)
 
   for (const file of input.codeFiles) {
     const fileContent = `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\`\n\n`;
@@ -145,12 +145,40 @@ Please analyze how well this codebase implements the requirements specified in t
   }
 
   // Parse the JSON response
-  const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+  let jsonText = textContent.text;
+
+  // Remove markdown code fences if present
+  jsonText = jsonText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+  // Find the JSON object
+  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('Could not parse JSON from Claude response');
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch (parseError) {
+    // Try to fix common JSON issues
+    let fixedJson = jsonMatch[0];
+
+    // Fix unescaped quotes in strings (common Claude issue)
+    fixedJson = fixedJson.replace(/:\s*"([^"]*?)(?<!\\)"([^"]*?)"/g, (match, p1, p2) => {
+      if (p2 && !p2.startsWith(',') && !p2.startsWith('}') && !p2.startsWith(']')) {
+        return `: "${p1}\\"${p2}"`;
+      }
+      return match;
+    });
+
+    try {
+      parsed = JSON.parse(fixedJson);
+    } catch {
+      // Log the problematic JSON for debugging
+      console.error('Failed to parse JSON:', jsonMatch[0].substring(0, 500));
+      throw new Error(`Failed to parse Claude response as JSON: ${parseError}`);
+    }
+  }
 
   // Ensure architecture has proper defaults if not provided
   const architecture: ArchitectureVisualization = parsed.architecture || { nodes: [], edges: [] };

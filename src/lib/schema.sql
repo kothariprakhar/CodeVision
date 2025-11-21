@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS projects (
   description TEXT,
   github_url TEXT NOT NULL,
   github_token TEXT NOT NULL,
+  repo_path TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   summary TEXT NOT NULL,
   findings TEXT NOT NULL,
   architecture TEXT NOT NULL DEFAULT '{"nodes":[],"edges":[]}',
+  chat_history TEXT NOT NULL DEFAULT '[]',
   raw_response TEXT NOT NULL,
   analyzed_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE

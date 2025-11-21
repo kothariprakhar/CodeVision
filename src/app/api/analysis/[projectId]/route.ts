@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProjectAnalysis } from '@/lib/repositories/analysis';
+import { getProjectAnalysis, getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
 
 export async function GET(
@@ -18,7 +18,18 @@ export async function GET(
       );
     }
 
-    const analysis = getProjectAnalysis(projectId);
+    // Check for version query param
+    const { searchParams } = new URL(request.url);
+    const analysisId = searchParams.get('version');
+
+    // Get analysis by specific version or latest
+    let analysis;
+    if (analysisId) {
+      analysis = getAnalysisById(analysisId);
+    } else {
+      analysis = getProjectAnalysis(projectId);
+    }
+
     if (!analysis) {
       return NextResponse.json(
         { error: 'No analysis results found' },
@@ -32,8 +43,8 @@ export async function GET(
     // Parse architecture JSON (with fallback for older analyses)
     let architecture = { nodes: [], edges: [] };
     try {
-      if ((analysis as Record<string, unknown>).architecture) {
-        architecture = JSON.parse((analysis as Record<string, unknown>).architecture as string);
+      if (analysis.architecture) {
+        architecture = JSON.parse(analysis.architecture);
       }
     } catch {
       // Keep default empty architecture if parsing fails
