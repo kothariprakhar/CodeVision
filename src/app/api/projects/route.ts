@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createProject, getAllProjects } from '@/lib/repositories/projects';
+import { createProject, getProjectsByUser } from '@/lib/repositories/projects';
 import { validateGitHubAccess } from '@/lib/services/github';
 import { analyzeProject } from '@/lib/services/analyzer';
+import { getUserFromRequest } from '@/lib/auth';
 import { z } from 'zod';
 
 const CreateProjectSchema = z.object({
@@ -18,9 +19,18 @@ const CreateProjectSchema = z.object({
   { message: 'Token is required for private repositories', path: ['github_token'] }
 );
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const projects = getAllProjects();
+    const user = await getUserFromRequest(request);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const projects = await getProjectsByUser(user.id);
     return NextResponse.json(projects);
   } catch (error) {
     return NextResponse.json(
@@ -32,6 +42,15 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getUserFromRequest(request);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
     const parsed = CreateProjectSchema.safeParse(body);
 
@@ -55,7 +74,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const project = createProject({
+    const project = await createProject({
+      user_id: user.id,
       name,
       description,
       github_url,

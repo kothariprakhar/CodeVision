@@ -1,5 +1,5 @@
-import fs from 'fs';
 import path from 'path';
+import { supabase } from '../db';
 
 export interface ParsedDocument {
   filename: string;
@@ -8,30 +8,36 @@ export interface ParsedDocument {
 }
 
 export async function parseDocument(filePath: string): Promise<ParsedDocument> {
-  const absolutePath = path.join(process.cwd(), filePath);
+  // Download from Supabase Storage
+  const { data, error } = await supabase.storage
+    .from('documents')
+    .download(filePath);
+
+  if (error) {
+    throw new Error(`Failed to download document: ${error.message}`);
+  }
+
+  // Convert blob to buffer
+  const buffer = Buffer.from(await data.arrayBuffer());
+
   const filename = path.basename(filePath);
   const ext = path.extname(filename).toLowerCase();
-
-  if (!fs.existsSync(absolutePath)) {
-    throw new Error(`File not found: ${filePath}`);
-  }
 
   if (ext === '.pdf') {
     // Dynamic import to avoid build-time canvas dependency issues
     const pdfParse = await import('pdf-parse');
     const { PDFParse } = pdfParse;
-    const buffer = fs.readFileSync(absolutePath);
     const pdfParser = new PDFParse({ data: buffer });
-    const data = await pdfParser.getText();
+    const pdfData = await pdfParser.getText();
     return {
       filename,
       type: 'pdf',
-      content: data.text,
+      content: pdfData.text,
     };
   }
 
   if (ext === '.md' || ext === '.markdown') {
-    const content = fs.readFileSync(absolutePath, 'utf-8');
+    const content = buffer.toString('utf-8');
     return {
       filename,
       type: 'markdown',
@@ -40,7 +46,7 @@ export async function parseDocument(filePath: string): Promise<ParsedDocument> {
   }
 
   if (ext === '.txt') {
-    const content = fs.readFileSync(absolutePath, 'utf-8');
+    const content = buffer.toString('utf-8');
     return {
       filename,
       type: 'text',
@@ -49,7 +55,6 @@ export async function parseDocument(filePath: string): Promise<ParsedDocument> {
   }
 
   if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
-    const buffer = fs.readFileSync(absolutePath);
     const base64 = buffer.toString('base64');
     const mimeType = getMimeType(ext);
     return {

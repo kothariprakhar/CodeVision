@@ -1,5 +1,5 @@
-import { getProject, updateProjectStatus, updateProjectRepoPath } from '../repositories/projects';
-import { getProjectDocuments } from '../repositories/documents';
+import { getProject, updateProject } from '../repositories/projects';
+import { getDocumentsByProject } from '../repositories/documents';
 import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/analysis';
 import { cloneRepository, getRelevantFiles } from './github';
 import { parseAllDocuments } from './file-parser';
@@ -12,32 +12,29 @@ export interface AnalyzeProjectResult {
 }
 
 export async function analyzeProject(projectId: string): Promise<AnalyzeProjectResult> {
-  const project = getProject(projectId);
+  const project = await getProject(projectId);
   if (!project) {
     return { success: false, error: 'Project not found' };
   }
 
-  const documents = getProjectDocuments(projectId);
+  const documents = await getDocumentsByProject(projectId);
   if (documents.length === 0) {
     return { success: false, error: 'No documents uploaded. Please upload requirements documents first.' };
   }
 
   try {
     // Update status to analyzing
-    updateProjectStatus(projectId, 'analyzing');
+    await updateProject(projectId, { status: 'analyzing' });
 
     // Delete previous analysis if exists
-    deleteProjectAnalysis(projectId);
+    await deleteProjectAnalysis(projectId);
 
     // Clone the repository
     const cloneResult = await cloneRepository(project.github_url, project.github_token, project.id);
     if (!cloneResult.success || !cloneResult.path) {
-      updateProjectStatus(projectId, 'failed');
+      await updateProject(projectId, { status: 'failed' });
       return { success: false, error: cloneResult.error || 'Failed to clone repository' };
     }
-
-    // Update project with the persistent repo path
-    updateProjectRepoPath(project.id, cloneResult.path);
 
     const clonePath = cloneResult.path;
 
@@ -46,14 +43,14 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     const parsedDocs = await parseAllDocuments(documentPaths);
 
     if (parsedDocs.length === 0) {
-      updateProjectStatus(projectId, 'failed');
+      await updateProject(projectId, { status: 'failed' });
       return { success: false, error: 'Failed to parse any documents' };
     }
 
     // Get relevant code files
     const relevantFiles = getRelevantFiles(clonePath);
     if (relevantFiles.length === 0) {
-      updateProjectStatus(projectId, 'failed');
+      await updateProject(projectId, { status: 'failed' });
       return { success: false, error: 'No source code files found in repository' };
     }
 
@@ -70,7 +67,7 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     });
 
     // Save results
-    const result = createAnalysisResult({
+    const result = await createAnalysisResult({
       project_id: projectId,
       summary: analysisOutput.summary,
       findings: analysisOutput.findings,
@@ -79,11 +76,11 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     });
 
     // Update project status
-    updateProjectStatus(projectId, 'completed');
+    await updateProject(projectId, { status: 'completed' });
 
     return { success: true, analysisId: result.id };
   } catch (error) {
-    updateProjectStatus(projectId, 'failed');
+    await updateProject(projectId, { status: 'failed' });
     return {
       success: false,
       error: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,

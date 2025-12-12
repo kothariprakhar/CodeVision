@@ -1,60 +1,84 @@
-import db, { Project, ProjectStatus } from '../db';
-import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../db';
+import type { Project, ProjectStatus } from '../db';
 
 export interface CreateProjectInput {
+  user_id: string;
   name: string;
   description?: string;
   github_url: string;
   github_token: string;
-  repo_path?: string;
 }
 
-export function createProject(input: CreateProjectInput): Project {
-  const id = uuidv4();
-  const stmt = db.prepare(`
-    INSERT INTO projects (id, name, description, github_url, github_token, repo_path)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-
-  stmt.run(
-    id,
-    input.name,
-    input.description || null,
-    input.github_url,
-    input.github_token,
-    input.repo_path || null
-  );
-
-  return getProject(id)!;
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string;
+  status?: ProjectStatus;
 }
 
-export function getProject(id: string): Project | null {
-  const stmt = db.prepare('SELECT * FROM projects WHERE id = ?');
-  return stmt.get(id) as Project | null;
+export async function createProject(input: CreateProjectInput): Promise<Project> {
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({
+      user_id: input.user_id,
+      name: input.name,
+      description: input.description || null,
+      github_url: input.github_url,
+      github_token: input.github_token,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create project: ${error.message}`);
+  return data as Project;
 }
 
-export function getAllProjects(): Project[] {
-  const stmt = db.prepare('SELECT * FROM projects ORDER BY created_at DESC');
-  return stmt.all() as Project[];
+export async function getProject(id: string): Promise<Project | null> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) return null;
+  return data as Project;
 }
 
-export function updateProjectStatus(id: string, status: ProjectStatus): void {
-  const stmt = db.prepare(`
-    UPDATE projects
-    SET status = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `);
-  stmt.run(status, id);
+export async function getProjectsByUser(userId: string): Promise<Project[]> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(`Failed to get projects: ${error.message}`);
+  return data as Project[];
 }
 
-export function updateProjectRepoPath(projectId: string, repoPath: string): void {
-  const stmt = db.prepare(`
-    UPDATE projects SET repo_path = ?, updated_at = datetime('now') WHERE id = ?
-  `);
-  stmt.run(repoPath, projectId);
+export async function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
+  const updates: any = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.name !== undefined) updates.name = input.name;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.status !== undefined) updates.status = input.status;
+
+  const { data, error } = await supabase
+    .from('projects')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to update project: ${error.message}`);
+  return data as Project;
 }
 
-export function deleteProject(id: string): void {
-  const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
-  stmt.run(id);
+export async function deleteProject(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(`Failed to delete project: ${error.message}`);
 }

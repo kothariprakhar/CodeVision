@@ -2,7 +2,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs';
 
-const REPOS_DIR = path.join(process.cwd(), 'data', 'repos');
+const REPOS_DIR = '/tmp/repos';
 
 export interface CloneResult {
   success: boolean;
@@ -90,13 +90,6 @@ export async function cloneRepository(
       success: false,
       error: `Failed to clone repository: ${error}`,
     };
-  }
-}
-
-export function cleanupProjectRepo(projectId: string): void {
-  const repoPath = path.join(REPOS_DIR, projectId);
-  if (fs.existsSync(repoPath)) {
-    fs.rmSync(repoPath, { recursive: true, force: true });
   }
 }
 

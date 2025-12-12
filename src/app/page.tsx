@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
   id: string;
@@ -13,18 +14,25 @@ interface Project {
 }
 
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (user) {
+      fetchProjects();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   const fetchProjects = async () => {
     try {
       const response = await fetch('/api/projects');
-      const data = await response.json();
-      setProjects(data);
+      if (response.ok) {
+        const data = await response.json();
+        setProjects(data);
+      }
     } catch (error) {
       console.error('Failed to fetch projects:', error);
     } finally {
@@ -56,7 +64,7 @@ export default function Home() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
@@ -64,6 +72,78 @@ export default function Home() {
     );
   }
 
+  // Landing page for logged out users
+  if (!user) {
+    return (
+      <div>
+        {/* Hero Section */}
+        <div className="text-center mb-16">
+          <div className="inline-block animate-float mb-6">
+            <div className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-purple-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-purple-500/30">
+              <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold mb-6">
+            <span className="gradient-text">Verify Code Quality</span>
+            <br />
+            <span className="text-white">with AI Precision</span>
+          </h1>
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-8">
+            Upload your requirements, connect your repository, and let AI analyze how well your code matches your specifications.
+          </p>
+          <div className="flex items-center justify-center gap-4">
+            <Link
+              href="/signup"
+              className="btn-primary inline-flex items-center gap-2 text-white px-8 py-4 rounded-xl text-lg font-semibold"
+            >
+              Get Started
+            </Link>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 text-gray-300 hover:text-white px-8 py-4 rounded-xl text-lg font-medium transition-colors"
+            >
+              Sign In
+            </Link>
+          </div>
+        </div>
+
+        {/* Features Section */}
+        <div className="grid md:grid-cols-3 gap-6 mt-16">
+          <div className="glass rounded-2xl p-6 text-center">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-purple-500/20 flex items-center justify-center">
+              <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-white font-semibold mb-2">Upload Requirements</h3>
+            <p className="text-gray-400 text-sm">PDF, Markdown, images - we analyze it all</p>
+          </div>
+          <div className="glass rounded-2xl p-6 text-center">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+              <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 className="text-white font-semibold mb-2">AI Analysis</h3>
+            <p className="text-gray-400 text-sm">Powered by Claude for deep insights</p>
+          </div>
+          <div className="glass rounded-2xl p-6 text-center">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-blue-500/20 flex items-center justify-center">
+              <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-white font-semibold mb-2">Clear Reports</h3>
+            <p className="text-gray-400 text-sm">Plain language findings, prioritized</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard for logged in users
   return (
     <div>
       {/* Hero Section */}

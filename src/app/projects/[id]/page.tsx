@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Tabs from '@/components/Tabs';
 import ArchitectureDiagram from '@/components/ArchitectureDiagram';
 import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import ChatBot from '@/components/ChatBot';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
   id: string;
@@ -64,7 +65,9 @@ interface AnalysisVersion {
 
 export default function ProjectDetail() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.id as string;
+  const { user, loading: authLoading } = useAuth();
 
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -140,9 +143,29 @@ export default function ProjectDetail() {
     }
   }, [selectedVersion, fetchAnalysis]);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
   const handleVersionChange = (versionId: string) => {
     setSelectedVersion(versionId);
   };
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  // Not authenticated
+  if (!user) {
+    return null;
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

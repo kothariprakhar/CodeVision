@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Finding {
   type: 'gap' | 'fidelity';
@@ -22,7 +23,9 @@ interface AnalysisResult {
 
 export default function ReportPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.id as string;
+  const { user, loading: authLoading } = useAuth();
 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +50,26 @@ export default function ReportPage() {
   useEffect(() => {
     fetchAnalysis();
   }, [fetchAnalysis]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  // Auth loading state
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+      </div>
+    );
+  }
+
+  // Not authenticated
+  if (!user) {
+    return null;
+  }
 
   const getSeverityClass = (severity: string) => {
     switch (severity) {

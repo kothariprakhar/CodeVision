@@ -1,5 +1,5 @@
-import db, { AnalysisResult, Finding, ArchitectureVisualization, ChatMessage } from '../db';
-import { v4 as uuidv4 } from 'uuid';
+import { supabase } from '../db';
+import type { AnalysisResult, Finding, ArchitectureVisualization, ChatMessage } from '../db';
 
 export interface CreateAnalysisInput {
   project_id: string;
@@ -9,79 +9,90 @@ export interface CreateAnalysisInput {
   raw_response: string;
 }
 
-export interface AnalysisVersion {
-  id: string;
-  analyzed_at: string;
-  is_latest: boolean;
+export async function createAnalysis(input: CreateAnalysisInput): Promise<AnalysisResult> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .insert({
+      project_id: input.project_id,
+      summary: input.summary,
+      findings: input.findings, // JSONB - no stringify needed
+      architecture: input.architecture, // JSONB - no stringify needed
+      chat_history: [], // JSONB - no stringify needed
+      raw_response: input.raw_response,
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to create analysis: ${error.message}`);
+  return data as AnalysisResult;
 }
 
-export function createAnalysisResult(input: CreateAnalysisInput): AnalysisResult {
-  const id = uuidv4();
-  const stmt = db.prepare(`
-    INSERT INTO analysis_results (id, project_id, summary, findings, architecture, raw_response)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+export async function getLatestAnalysis(projectId: string): Promise<AnalysisResult | null> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('analyzed_at', { ascending: false })
+    .limit(1)
+    .single();
 
-  stmt.run(
-    id,
-    input.project_id,
-    input.summary,
-    JSON.stringify(input.findings),
-    JSON.stringify(input.architecture),
-    input.raw_response
-  );
-
-  return getAnalysisResult(id)!;
+  if (error) return null;
+  return data as AnalysisResult;
 }
 
-export function getAnalysisResult(id: string): AnalysisResult | null {
-  const stmt = db.prepare('SELECT * FROM analysis_results WHERE id = ?');
-  return stmt.get(id) as AnalysisResult | null;
+export async function getAllAnalyses(projectId: string): Promise<AnalysisResult[]> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('analyzed_at', { ascending: false });
+
+  if (error) throw new Error(`Failed to get analyses: ${error.message}`);
+  return data as AnalysisResult[];
 }
 
-export function getProjectAnalysis(projectId: string): AnalysisResult | null {
-  const stmt = db.prepare(`
-    SELECT * FROM analysis_results
-    WHERE project_id = ?
-    ORDER BY analyzed_at DESC
-    LIMIT 1
-  `);
-  return stmt.get(projectId) as AnalysisResult | null;
+export async function updateChatHistory(
+  analysisId: string,
+  chatHistory: ChatMessage[]
+): Promise<void> {
+  const { error } = await supabase
+    .from('analysis_results')
+    .update({ chat_history: chatHistory }) // JSONB - no stringify needed
+    .eq('id', analysisId);
+
+  if (error) throw new Error(`Failed to update chat history: ${error.message}`);
 }
 
-export function getProjectAnalysisVersions(projectId: string): AnalysisVersion[] {
-  const stmt = db.prepare(`
-    SELECT id, analyzed_at FROM analysis_results
-    WHERE project_id = ?
-    ORDER BY analyzed_at DESC
-  `);
-  const results = stmt.all(projectId) as { id: string; analyzed_at: string }[];
+// Helper function to get analysis by ID (used by chat and other routes)
+export async function getAnalysisById(analysisId: string): Promise<AnalysisResult | null> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .select('*')
+    .eq('id', analysisId)
+    .single();
 
-  return results.map((r, index) => ({
-    id: r.id,
-    analyzed_at: r.analyzed_at,
-    is_latest: index === 0,
-  }));
+  if (error) return null;
+  return data as AnalysisResult;
 }
 
-export function getAnalysisById(analysisId: string): AnalysisResult | null {
-  const stmt = db.prepare('SELECT * FROM analysis_results WHERE id = ?');
-  return stmt.get(analysisId) as AnalysisResult | null;
+// Helper function to get chat history from an analysis
+export async function getChatHistory(analysisId: string): Promise<ChatMessage[]> {
+  const analysis = await getAnalysisById(analysisId);
+  if (!analysis) return [];
+  return analysis.chat_history;
 }
 
-export function getChatHistory(analysisId: string): ChatMessage[] {
-  const stmt = db.prepare('SELECT chat_history FROM analysis_results WHERE id = ?');
-  const result = stmt.get(analysisId) as { chat_history: string } | null;
-  if (!result) return [];
-  return JSON.parse(result.chat_history);
+// Delete all analyses for a project
+export async function deleteProjectAnalysis(projectId: string): Promise<void> {
+  const { error } = await supabase
+    .from('analysis_results')
+    .delete()
+    .eq('project_id', projectId);
+
+  if (error) throw new Error(`Failed to delete project analyses: ${error.message}`);
 }
 
-export function updateChatHistory(analysisId: string, messages: ChatMessage[]): void {
-  const stmt = db.prepare('UPDATE analysis_results SET chat_history = ? WHERE id = ?');
-  stmt.run(JSON.stringify(messages), analysisId);
-}
-
-export function deleteProjectAnalysis(projectId: string): void {
-  const stmt = db.prepare('DELETE FROM analysis_results WHERE project_id = ?');
-  stmt.run(projectId);
-}
+// Legacy function names for backward compatibility
+export const createAnalysisResult = createAnalysis;
+export const getProjectAnalysis = getLatestAnalysis;
+export const getProjectAnalysisVersions = getAllAnalyses;

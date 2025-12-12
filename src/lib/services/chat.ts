@@ -5,6 +5,7 @@ import { getAnalysisById, getChatHistory, updateChatHistory } from '../repositor
 import { getProject } from '../repositories/projects';
 import { ChatMessage, ArchitectureVisualization, Finding } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { getProjectRepoPath, cloneRepository } from './github';
 
 const anthropic = new Anthropic();
 
@@ -99,25 +100,42 @@ export async function chat(
   message: string
 ): Promise<ChatResponse> {
   // Get analysis context
-  const analysis = getAnalysisById(analysisId);
+  const analysis = await getAnalysisById(analysisId);
   if (!analysis) {
     throw new Error('Analysis not found');
   }
 
-  const project = getProject(projectId);
+  const project = await getProject(projectId);
   if (!project) {
     throw new Error('Project not found');
   }
 
+  // Get repo path and ensure it exists (on-demand cloning)
+  const repoPath = getProjectRepoPath(projectId);
+
+  if (!fs.existsSync(repoPath)) {
+    // Clone if not present
+    const cloneResult = await cloneRepository(
+      project.github_url,
+      project.github_token,
+      projectId
+    );
+
+    if (!cloneResult.success) {
+      // Proceed without code context if clone fails
+      console.warn('Failed to clone repository for chat context:', cloneResult.error);
+    }
+  }
+
   const context: ChatContext = {
     summary: analysis.summary,
-    architecture: JSON.parse(analysis.architecture as unknown as string),
-    findings: JSON.parse(analysis.findings as string),
-    repoPath: project.repo_path,
+    architecture: analysis.architecture,
+    findings: analysis.findings,
+    repoPath: fs.existsSync(repoPath) ? repoPath : null,
   };
 
   // Get chat history
-  const history = getChatHistory(analysisId);
+  const history = await getChatHistory(analysisId);
 
   // Determine response type
   const responseType = determineResponseType(message);
@@ -189,11 +207,11 @@ ${codeContext}`;
     responseType,
   };
 
-  updateChatHistory(analysisId, [...history, userMessage, assistantChatMessage]);
+  await updateChatHistory(analysisId, [...history, userMessage, assistantChatMessage]);
 
   return chatResponse;
 }
 
-export function getAnalysisChatHistory(analysisId: string): ChatMessage[] {
-  return getChatHistory(analysisId);
+export async function getAnalysisChatHistory(analysisId: string): Promise<ChatMessage[]> {
+  return await getChatHistory(analysisId);
 }

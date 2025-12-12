@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createDocument, getProjectDocuments } from '@/lib/repositories/documents';
+import { createDocument, getDocumentsByProject } from '@/lib/repositories/documents';
 import { getProject } from '@/lib/repositories/projects';
-import { writeFile } from 'fs/promises';
-import path from 'path';
+import { getUserFromRequest } from '@/lib/auth';
+import { supabase } from '@/lib/db';
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
 
-const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const ALLOWED_TYPES: Record<string, 'pdf' | 'markdown' | 'text' | 'image'> = {
@@ -22,6 +20,11 @@ const ALLOWED_TYPES: Record<string, 'pdf' | 'markdown' | 'text' | 'image'> = {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const projectId = formData.get('project_id') as string;
     const file = formData.get('file') as File;
@@ -40,13 +43,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate project exists
-    const project = getProject(projectId);
+    // Validate project exists and user owns it
+    const project = await getProject(projectId);
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
       );
+    }
+
+    if (project.user_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Validate file size
@@ -61,7 +68,7 @@ export async function POST(request: NextRequest) {
     const fileType = ALLOWED_TYPES[file.type];
     if (!fileType) {
       // Check by extension as fallback
-      const ext = path.extname(file.name).toLowerCase();
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
       if (ext === '.md') {
         // Handle .md files
       } else {
@@ -75,7 +82,7 @@ export async function POST(request: NextRequest) {
     // Determine actual file type
     let actualFileType: 'pdf' | 'markdown' | 'text' | 'image' = fileType;
     if (!actualFileType) {
-      const ext = path.extname(file.name).toLowerCase();
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
       if (ext === '.md' || ext === '.markdown') {
         actualFileType = 'markdown';
       } else if (ext === '.txt') {
@@ -90,29 +97,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Ensure upload directory exists
-    const projectUploadDir = path.join(UPLOAD_DIR, projectId);
-    if (!fs.existsSync(projectUploadDir)) {
-      fs.mkdirSync(projectUploadDir, { recursive: true });
-    }
-
-    // Save file with unique name
-    const fileId = uuidv4();
-    const ext = path.extname(file.name);
-    const savedFilename = `${fileId}${ext}`;
-    const filePath = path.join(projectUploadDir, savedFilename);
-    const relativePath = path.join('uploads', projectId, savedFilename);
-
+    // Upload to Supabase Storage
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
+    const filePath = `${projectId}/${uuidv4()}-${file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(filePath, buffer, {
+        contentType: file.type,
+        upsert: false
+      });
+
+    if (uploadError) {
+      return NextResponse.json(
+        { error: `Failed to upload file: ${uploadError.message}` },
+        { status: 500 }
+      );
+    }
 
     // Create database record
-    const document = createDocument({
+    const document = await createDocument({
       project_id: projectId,
       filename: file.name,
       file_type: actualFileType,
-      file_path: relativePath,
+      file_path: filePath,
     });
 
     return NextResponse.json(document, { status: 201 });
@@ -127,6 +136,11 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
 
@@ -137,7 +151,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const documents = getProjectDocuments(projectId);
+    // Verify project exists and user owns it
+    const project = await getProject(projectId);
+    if (!project) {
+      return NextResponse.json(
+        { error: 'Project not found' },
+        { status: 404 }
+      );
+    }
+
+    if (project.user_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const documents = await getDocumentsByProject(projectId);
     return NextResponse.json(documents);
   } catch (error) {
     return NextResponse.json(

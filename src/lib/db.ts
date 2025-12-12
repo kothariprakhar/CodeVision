@@ -1,27 +1,29 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'database.sqlite');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Ensure data directory exists
-const dataDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+if (!supabaseUrl || !supabaseServiceKey) {
+  throw new Error('Missing Supabase environment variables');
 }
 
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+// Use service role key for server-side operations (bypasses RLS)
+export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
-// Initialize schema
-const schemaPath = path.join(process.cwd(), 'src', 'lib', 'schema.sql');
-const schema = fs.readFileSync(schemaPath, 'utf-8');
-db.exec(schema);
-
-export default db;
-
+// Export types (unchanged)
 export type ProjectStatus = 'pending' | 'analyzing' | 'completed' | 'failed';
+
+export interface User {
+  id: string;
+  email: string;
+  password_hash: string;
+  created_at: string;
+}
 
 export interface ChatMessage {
   id: string;
@@ -33,11 +35,11 @@ export interface ChatMessage {
 
 export interface Project {
   id: string;
+  user_id: string;
   name: string;
   description: string | null;
   github_url: string;
   github_token: string;
-  repo_path: string | null;
   status: ProjectStatus;
   created_at: string;
   updated_at: string;
@@ -56,9 +58,9 @@ export interface AnalysisResult {
   id: string;
   project_id: string;
   summary: string;
-  findings: string; // JSON string
-  architecture: string; // JSON string
-  chat_history: string; // JSON string
+  findings: Finding[];
+  architecture: ArchitectureVisualization;
+  chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
 }

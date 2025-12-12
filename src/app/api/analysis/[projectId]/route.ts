@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProjectAnalysis, getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
+import { getUserFromRequest } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { projectId } = await params;
 
-    // Verify project exists
-    const project = getProject(projectId);
+    // Verify project exists and user owns it
+    const project = await getProject(projectId);
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
       );
+    }
+
+    if (project.user_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Check for version query param
@@ -25,9 +35,9 @@ export async function GET(
     // Get analysis by specific version or latest
     let analysis;
     if (analysisId) {
-      analysis = getAnalysisById(analysisId);
+      analysis = await getAnalysisById(analysisId);
     } else {
-      analysis = getProjectAnalysis(projectId);
+      analysis = await getProjectAnalysis(projectId);
     }
 
     if (!analysis) {
@@ -37,18 +47,11 @@ export async function GET(
       );
     }
 
-    // Parse findings JSON
-    const findings = JSON.parse(analysis.findings);
+    // JSONB fields are already objects, no parsing needed
+    const findings = analysis.findings;
 
-    // Parse architecture JSON (with fallback for older analyses)
-    let architecture = { nodes: [], edges: [] };
-    try {
-      if (analysis.architecture) {
-        architecture = JSON.parse(analysis.architecture);
-      }
-    } catch {
-      // Keep default empty architecture if parsing fails
-    }
+    // Architecture is already an object (with fallback for null/undefined)
+    const architecture = analysis.architecture || { nodes: [], edges: [] };
 
     return NextResponse.json({
       id: analysis.id,

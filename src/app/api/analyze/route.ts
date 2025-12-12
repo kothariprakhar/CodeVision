@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeProject } from '@/lib/services/analyzer';
 import { getProject } from '@/lib/repositories/projects';
+import { getUserFromRequest } from '@/lib/auth';
 import { z } from 'zod';
 
 const AnalyzeSchema = z.object({
@@ -9,6 +10,11 @@ const AnalyzeSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const parsed = AnalyzeSchema.safeParse(body);
 
@@ -22,12 +28,17 @@ export async function POST(request: NextRequest) {
     const { project_id } = parsed.data;
 
     // Check project exists
-    const project = getProject(project_id);
+    const project = await getProject(project_id);
     if (!project) {
       return NextResponse.json(
         { error: 'Project not found' },
         { status: 404 }
       );
+    }
+
+    // Check ownership
+    if (project.user_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Check project is not already being analyzed
