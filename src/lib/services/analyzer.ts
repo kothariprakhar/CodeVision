@@ -41,44 +41,49 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     // Download the repository using GitHub API (works on serverless)
     let codeFiles: { path: string; content: string }[] = [];
 
-    try {
-      // Try GitHub API download first (works everywhere, including Vercel)
-      let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id);
+    // Try GitHub API download first (works everywhere, including Vercel)
+    let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id);
 
-      // Fallback to git clone for local development if download fails
-      if (!downloadResult.success) {
-        console.log('GitHub API download failed, trying git clone fallback:', downloadResult.error);
+    // Fallback to git clone for local development if download fails
+    if (!downloadResult.success) {
+      console.log('GitHub API download failed:', downloadResult.error);
+      console.log('Attempting git clone fallback (may fail on serverless)...');
+
+      try {
         downloadResult = await cloneRepository(project.github_url, project.github_token, project.id);
-      }
-
-      if (downloadResult.success && downloadResult.path) {
-        const repoPath = downloadResult.path;
-
-        // Get relevant code files
-        const relevantFiles = getRelevantFiles(repoPath);
-
-        if (relevantFiles.length === 0) {
-          await updateProject(projectId, { status: 'failed' });
-          return { success: false, error: 'No source code files found in repository' };
-        }
-
-        // Read code file contents
-        codeFiles = relevantFiles.map(filePath => ({
-          path: filePath,
-          content: readCodeFile(repoPath, filePath),
-        }));
-
-        console.log(`Successfully downloaded repository and loaded ${codeFiles.length} code files`);
-      } else {
+        console.log('Git clone fallback successful');
+      } catch (gitError) {
+        console.warn('Git clone fallback failed (expected on serverless environments)');
+        console.warn('Original GitHub API error:', downloadResult.error);
         await updateProject(projectId, { status: 'failed' });
-        return { success: false, error: downloadResult.error || 'Failed to download repository' };
+        return {
+          success: false,
+          error: `Failed to download repository via GitHub API: ${downloadResult.error}`,
+        };
       }
-    } catch (error) {
+    }
+
+    if (downloadResult.success && downloadResult.path) {
+      const repoPath = downloadResult.path;
+
+      // Get relevant code files
+      const relevantFiles = getRelevantFiles(repoPath);
+
+      if (relevantFiles.length === 0) {
+        await updateProject(projectId, { status: 'failed' });
+        return { success: false, error: 'No source code files found in repository' };
+      }
+
+      // Read code file contents
+      codeFiles = relevantFiles.map(filePath => ({
+        path: filePath,
+        content: readCodeFile(repoPath, filePath),
+      }));
+
+      console.log(`Successfully downloaded repository and loaded ${codeFiles.length} code files`);
+    } else {
       await updateProject(projectId, { status: 'failed' });
-      return {
-        success: false,
-        error: `Failed to download repository: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      };
+      return { success: false, error: downloadResult.error || 'Failed to download repository' };
     }
 
     // Run Claude analysis

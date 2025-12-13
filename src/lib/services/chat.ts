@@ -121,14 +121,22 @@ export async function chat(
       projectId
     );
 
-    // Fallback to git clone if download fails
+    // Fallback to git clone if download fails (may fail on serverless)
     if (!downloadResult.success) {
-      console.log('GitHub API download failed, trying git clone:', downloadResult.error);
-      downloadResult = await cloneRepository(
-        project.github_url,
-        project.github_token,
-        projectId
-      );
+      console.log('GitHub API download failed:', downloadResult.error);
+      console.log('Attempting git clone fallback for chat...');
+
+      try {
+        downloadResult = await cloneRepository(
+          project.github_url,
+          project.github_token,
+          projectId
+        );
+        console.log('Git clone fallback successful');
+      } catch (gitError) {
+        console.warn('Git clone fallback failed (expected on serverless)');
+        console.warn('Proceeding without code context for chat');
+      }
     }
 
     if (!downloadResult.success) {

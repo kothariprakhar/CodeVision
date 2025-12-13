@@ -28,8 +28,9 @@ export async function validateGitHubAccess(
     // Test API access
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `token ${token}`,
         Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'CodeVision-Analyzer',
       },
     });
 
@@ -67,6 +68,8 @@ export async function downloadRepository(
 
     const [, owner, repo] = match;
 
+    console.log(`Downloading repository: ${owner}/${repo}`);
+
     // Ensure repos directory exists
     if (!fs.existsSync(REPOS_DIR)) {
       fs.mkdirSync(REPOS_DIR, { recursive: true });
@@ -81,14 +84,19 @@ export async function downloadRepository(
 
     // Download tarball from GitHub API
     const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball`;
+    console.log(`Fetching tarball from: ${tarballUrl}`);
+
     const response = await fetch(tarballUrl, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `token ${token}`, // GitHub API uses "token" prefix, not "Bearer"
         Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'CodeVision-Analyzer',
       },
     });
 
     if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`GitHub API error response:`, errorBody);
       return {
         success: false,
         error: `Failed to download repository: ${response.status} ${response.statusText}`,
