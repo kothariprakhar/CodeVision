@@ -1,7 +1,7 @@
 import { getProject, updateProject } from '../repositories/projects';
 import { getDocumentsByProject } from '../repositories/documents';
 import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/analysis';
-import { cloneRepository, getRelevantFiles } from './github';
+import { downloadRepository, cloneRepository, getRelevantFiles } from './github';
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 
@@ -29,16 +29,7 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
     // Delete previous analysis if exists
     await deleteProjectAnalysis(projectId);
 
-    // Clone the repository
-    const cloneResult = await cloneRepository(project.github_url, project.github_token, project.id);
-    if (!cloneResult.success || !cloneResult.path) {
-      await updateProject(projectId, { status: 'failed' });
-      return { success: false, error: cloneResult.error || 'Failed to clone repository' };
-    }
-
-    const clonePath = cloneResult.path;
-
-    // Parse all uploaded documents
+    // Parse all uploaded documents first
     const documentPaths = documents.map(doc => doc.file_path);
     const parsedDocs = await parseAllDocuments(documentPaths);
 
@@ -47,18 +38,48 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
       return { success: false, error: 'Failed to parse any documents' };
     }
 
-    // Get relevant code files
-    const relevantFiles = getRelevantFiles(clonePath);
-    if (relevantFiles.length === 0) {
-      await updateProject(projectId, { status: 'failed' });
-      return { success: false, error: 'No source code files found in repository' };
-    }
+    // Download the repository using GitHub API (works on serverless)
+    let codeFiles: { path: string; content: string }[] = [];
 
-    // Read code file contents
-    const codeFiles = relevantFiles.map(filePath => ({
-      path: filePath,
-      content: readCodeFile(clonePath!, filePath),
-    }));
+    try {
+      // Try GitHub API download first (works everywhere, including Vercel)
+      let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id);
+
+      // Fallback to git clone for local development if download fails
+      if (!downloadResult.success) {
+        console.log('GitHub API download failed, trying git clone fallback:', downloadResult.error);
+        downloadResult = await cloneRepository(project.github_url, project.github_token, project.id);
+      }
+
+      if (downloadResult.success && downloadResult.path) {
+        const repoPath = downloadResult.path;
+
+        // Get relevant code files
+        const relevantFiles = getRelevantFiles(repoPath);
+
+        if (relevantFiles.length === 0) {
+          await updateProject(projectId, { status: 'failed' });
+          return { success: false, error: 'No source code files found in repository' };
+        }
+
+        // Read code file contents
+        codeFiles = relevantFiles.map(filePath => ({
+          path: filePath,
+          content: readCodeFile(repoPath, filePath),
+        }));
+
+        console.log(`Successfully downloaded repository and loaded ${codeFiles.length} code files`);
+      } else {
+        await updateProject(projectId, { status: 'failed' });
+        return { success: false, error: downloadResult.error || 'Failed to download repository' };
+      }
+    } catch (error) {
+      await updateProject(projectId, { status: 'failed' });
+      return {
+        success: false,
+        error: `Failed to download repository: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
 
     // Run Claude analysis
     const analysisOutput = await analyzeCodeAlignment({

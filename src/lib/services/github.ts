@@ -1,6 +1,8 @@
 import simpleGit, { SimpleGit } from 'simple-git';
 import path from 'path';
 import fs from 'fs';
+import * as tar from 'tar';
+import { pipeline } from 'stream/promises';
 
 const REPOS_DIR = '/tmp/repos';
 
@@ -44,6 +46,78 @@ export async function validateGitHubAccess(
     }
   } catch (error) {
     return { valid: false, error: `Failed to validate: ${error}` };
+  }
+}
+
+/**
+ * Download repository using GitHub API (works on serverless without git)
+ * This is the preferred method for Vercel/serverless environments
+ */
+export async function downloadRepository(
+  repoUrl: string,
+  token: string,
+  projectId: string
+): Promise<CloneResult> {
+  try {
+    // Extract owner/repo from URL
+    const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/\.]+)/);
+    if (!match) {
+      return { success: false, error: 'Invalid GitHub URL format' };
+    }
+
+    const [, owner, repo] = match;
+
+    // Ensure repos directory exists
+    if (!fs.existsSync(REPOS_DIR)) {
+      fs.mkdirSync(REPOS_DIR, { recursive: true });
+    }
+
+    const downloadPath = path.join(REPOS_DIR, projectId);
+
+    // Clean up existing directory if present
+    if (fs.existsSync(downloadPath)) {
+      fs.rmSync(downloadPath, { recursive: true, force: true });
+    }
+
+    // Download tarball from GitHub API
+    const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball`;
+    const response = await fetch(tarballUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `Failed to download repository: ${response.status} ${response.statusText}`,
+      };
+    }
+
+    if (!response.body) {
+      return { success: false, error: 'No response body from GitHub API' };
+    }
+
+    // Create temporary directory for extraction
+    fs.mkdirSync(downloadPath, { recursive: true });
+
+    // Extract tarball directly from stream
+    // GitHub tarballs have a top-level directory, we need to strip it
+    await pipeline(
+      response.body as any,
+      tar.extract({
+        cwd: downloadPath,
+        strip: 1, // Remove the top-level directory from the tarball
+      })
+    );
+
+    return { success: true, path: downloadPath };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to download repository: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 

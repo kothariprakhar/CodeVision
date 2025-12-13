@@ -5,7 +5,7 @@ import { getAnalysisById, getChatHistory, updateChatHistory } from '../repositor
 import { getProject } from '../repositories/projects';
 import { ChatMessage, ArchitectureVisualization, Finding } from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { getProjectRepoPath, cloneRepository } from './github';
+import { getProjectRepoPath, downloadRepository, cloneRepository } from './github';
 
 const anthropic = new Anthropic();
 
@@ -114,16 +114,26 @@ export async function chat(
   const repoPath = getProjectRepoPath(projectId);
 
   if (!fs.existsSync(repoPath)) {
-    // Clone if not present
-    const cloneResult = await cloneRepository(
+    // Download repository if not present (try GitHub API first, then git clone)
+    let downloadResult = await downloadRepository(
       project.github_url,
       project.github_token,
       projectId
     );
 
-    if (!cloneResult.success) {
-      // Proceed without code context if clone fails
-      console.warn('Failed to clone repository for chat context:', cloneResult.error);
+    // Fallback to git clone if download fails
+    if (!downloadResult.success) {
+      console.log('GitHub API download failed, trying git clone:', downloadResult.error);
+      downloadResult = await cloneRepository(
+        project.github_url,
+        project.github_token,
+        projectId
+      );
+    }
+
+    if (!downloadResult.success) {
+      // Proceed without code context if download fails
+      console.warn('Failed to download repository for chat context:', downloadResult.error);
     }
   }
 
