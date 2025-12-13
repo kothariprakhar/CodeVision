@@ -86,13 +86,20 @@ export async function downloadRepository(
     const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball`;
     console.log(`Fetching tarball from: ${tarballUrl}`);
 
-    const response = await fetch(tarballUrl, {
-      headers: {
-        Authorization: `token ${token}`, // GitHub API uses "token" prefix, not "Bearer"
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'CodeVision-Analyzer',
-      },
-    });
+    // Build headers - only include Authorization if token is provided
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'CodeVision-Analyzer',
+    };
+
+    if (token && token.trim()) {
+      headers.Authorization = `token ${token}`;
+      console.log('Using authenticated request');
+    } else {
+      console.log('Using unauthenticated request (public repo)');
+    }
+
+    const response = await fetch(tarballUrl, { headers });
 
     if (!response.ok) {
       const errorBody = await response.text();
