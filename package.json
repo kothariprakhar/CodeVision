@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69.0",
+    "@ast-grep/napi": "^0.40.1",
     "@supabase/supabase-js": "^2.87.1",
     "@types/pdf-parse": "^1.1.5",
     "@types/tar": "^6.1.13",
@@ -21,6 +22,8 @@
     "pdf-parse": "^2.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-hook-form": "^7.68.0",
+    "resend": "^6.6.0",
     "simple-git": "^3.30.0",
     "tar": "^7.5.2",
     "uuid": "^13.0.0",

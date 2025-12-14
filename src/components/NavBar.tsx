@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { LogoFull } from '@/components/Logo';
 
 export default function NavBar() {
   const { user, loading, logout } = useAuth();
@@ -11,13 +12,8 @@ export default function NavBar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg group-hover:shadow-purple-500/30 transition-shadow">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-              </div>
-              <span className="text-2xl font-bold gradient-text">Code Vision</span>
+            <Link href="/" className="group">
+              <LogoFull className="group-hover:opacity-80 transition-opacity" />
             </Link>
           </div>
           <div className="flex items-center gap-4">

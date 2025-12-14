@@ -76,6 +76,19 @@ export default function Home() {
   if (!user) {
     return (
       <div>
+        {/* Northwestern Access Banner */}
+        <div className="mb-8 p-4 rounded-xl bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 text-center">
+          <p className="text-sm text-gray-300">
+            🎓 Currently open to <span className="font-semibold text-purple-300">Northwestern University</span> community members.
+            {' '}
+            <span className="text-gray-400">Not affiliated?</span>
+            {' '}
+            <Link href="/signup" className="text-purple-400 hover:text-purple-300 underline transition-colors">
+              Join the waitlist!
+            </Link>
+          </p>
+        </div>
+
         {/* Hero Section */}
         <div className="text-center mb-16">
           <div className="inline-block animate-float mb-6">

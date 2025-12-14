@@ -52,6 +52,16 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Northwestern Access Banner */}
+          <div className="mb-6 p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 text-center">
+            <p className="text-xs text-gray-400">
+              Northwestern email required.{' '}
+              <Link href="/signup" className="text-purple-400 hover:text-purple-300 underline transition-colors">
+                Need access? Join waitlist
+              </Link>
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Email
