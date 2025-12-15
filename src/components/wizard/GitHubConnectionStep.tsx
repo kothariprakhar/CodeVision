@@ -2,7 +2,7 @@
 // ABOUTME: Validates GitHub URL format and tests access with provided token
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWizard } from '@/contexts/WizardContext';
 
 export default function GitHubConnectionStep() {
@@ -10,6 +10,13 @@ export default function GitHubConnectionStep() {
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState('');
   const [validationSuccess, setValidationSuccess] = useState(false);
+
+  // Reset validation when public/private toggle changes
+  useEffect(() => {
+    updateData({ github_validated: false });
+    setValidationSuccess(false);
+    setError('');
+  }, [data.is_public]);
 
   const validateGitHub = async () => {
     setValidating(true);
@@ -60,7 +67,7 @@ export default function GitHubConnectionStep() {
   };
 
   const handleNext = () => {
-    if (!data.github_validated && !data.is_public) {
+    if (!data.github_validated) {
       setError('Please validate GitHub access before proceeding');
       return;
     }

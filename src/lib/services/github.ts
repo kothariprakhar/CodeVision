@@ -25,13 +25,19 @@ export async function validateGitHubAccess(
 
     const [, owner, repo] = match;
 
+    // Build headers - only include Authorization if token is provided
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github.v3+json',
+      'User-Agent': 'CodeVision-Analyzer',
+    };
+
+    if (token && token.trim()) {
+      headers.Authorization = `token ${token}`;
+    }
+
     // Test API access
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers: {
-        Authorization: `token ${token}`,
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'CodeVision-Analyzer',
-      },
+      headers,
     });
 
     if (response.status === 200) {
