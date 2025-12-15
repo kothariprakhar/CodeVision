@@ -80,7 +80,7 @@ export default function RequirementsStep() {
           name: data.name,
           description: data.description,
           github_url: data.github_url,
-          github_token: data.is_public ? '' : data.github_token,
+          github_token: data.github_token || '',
           is_public: data.is_public,
         }),
       });
@@ -95,6 +95,8 @@ export default function RequirementsStep() {
 
       // Step 2: Upload documents if any
       if (data.documents.length > 0) {
+        const uploadResults: Array<{ file: string; success: boolean; error?: string }> = [];
+
         for (const file of data.documents) {
           const formData = new FormData();
           formData.append('file', file);
@@ -102,23 +104,50 @@ export default function RequirementsStep() {
 
           const uploadResponse = await fetch('/api/documents', {
             method: 'POST',
+            credentials: 'include',
             body: formData,
           });
 
           if (!uploadResponse.ok) {
-            console.error('Failed to upload document:', file.name);
+            const errorData = await uploadResponse.json().catch(() => ({ error: 'Unknown error' }));
+            uploadResults.push({
+              file: file.name,
+              success: false,
+              error: errorData.error || `Upload failed with status ${uploadResponse.status}`
+            });
+          } else {
+            uploadResults.push({ file: file.name, success: true });
           }
+        }
+
+        // Check if any uploads failed
+        const failedUploads = uploadResults.filter(r => !r.success);
+        if (failedUploads.length > 0) {
+          const failedFilesList = failedUploads
+            .map(f => `${f.file}: ${f.error}`)
+            .join('\n');
+          throw new Error(
+            `Project created but ${failedUploads.length} document(s) failed to upload:\n${failedFilesList}\n\nProject ID: ${projectId}`
+          );
         }
       }
 
       // Step 3: Trigger analysis (already auto-triggered by project creation)
       // The /api/projects POST endpoint auto-triggers analysis
 
-      // Reset wizard and redirect
+      // Only reset wizard and redirect on complete success
       resetWizard();
       router.push(`/projects/${projectId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to complete setup');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to complete setup';
+      setError(errorMessage);
+
+      // If error mentions "Project created but", don't reset wizard
+      // User needs to see the error and know their project was created
+      if (errorMessage.includes('Project created but')) {
+        // Don't reset wizard - let user see what went wrong
+        // They can navigate to the project manually if needed
+      }
     } finally {
       setLoading(false);
     }
