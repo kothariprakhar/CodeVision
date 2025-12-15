@@ -7,25 +7,25 @@ import { useWizard } from '@/contexts/WizardContext';
 
 export default function ProjectDetailsStep() {
   const { data, updateData, nextStep } = useWizard();
-  const [errors, setErrors] = React.useState({ name: '' });
+  const [errors, setErrors] = React.useState({ name: '', description: '' });
 
   const validateAndNext = () => {
     // Validate
     if (!data.name.trim()) {
-      setErrors({ name: 'Project name is required' });
+      setErrors({ name: 'Project name is required', description: '' });
       return;
     }
     if (data.name.length > 100) {
-      setErrors({ name: 'Project name must be 100 characters or less' });
+      setErrors({ name: 'Project name must be 100 characters or less', description: '' });
       return;
     }
     if (data.description.length > 500) {
-      setErrors({ name: 'Description must be 500 characters or less' });
+      setErrors({ name: '', description: 'Description must be 500 characters or less' });
       return;
     }
 
     // Clear errors and proceed
-    setErrors({ name: '' });
+    setErrors({ name: '', description: '' });
     nextStep();
   };
 
@@ -74,6 +74,9 @@ export default function ProjectDetailsStep() {
             onChange={e => updateData({ description: e.target.value })}
             placeholder="Brief description of your project (optional)"
           />
+          {errors.description && (
+            <p className="mt-2 text-sm text-red-400">{errors.description}</p>
+          )}
           <p className="mt-2 text-xs text-gray-500">
             {data.description.length}/500 characters
           </p>

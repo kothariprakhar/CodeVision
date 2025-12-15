@@ -11,12 +11,11 @@ export default function GitHubConnectionStep() {
   const [error, setError] = useState('');
   const [validationSuccess, setValidationSuccess] = useState(false);
 
-  // Reset validation when public/private toggle changes
+  // Reset validation when public/private toggle changes or URL changes
   useEffect(() => {
-    updateData({ github_validated: false });
     setValidationSuccess(false);
     setError('');
-  }, [data.is_public]);
+  }, [data.is_public, data.github_url]);
 
   const validateGitHub = async () => {
     setValidating(true);
@@ -67,10 +66,15 @@ export default function GitHubConnectionStep() {
   };
 
   const handleNext = () => {
-    if (!data.github_validated) {
+    // For public repos, validation is optional (user can skip it)
+    // For private repos, validation is required
+    if (!data.is_public && !data.github_validated) {
       setError('Please validate GitHub access before proceeding');
       return;
     }
+
+    // Clear any errors and proceed
+    setError('');
     nextStep();
   };
 
