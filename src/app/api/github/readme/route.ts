@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       'User-Agent': 'CodeVision-Analyzer',
     };
 
-    if (!is_public && github_token) {
+    if (github_token && github_token.trim()) {
       headers.Authorization = `token ${github_token}`;
     }
 
