@@ -19,6 +19,10 @@ export default function ProjectDetailsStep() {
       setErrors({ name: 'Project name must be 100 characters or less' });
       return;
     }
+    if (data.description.length > 500) {
+      setErrors({ name: 'Description must be 500 characters or less' });
+      return;
+    }
 
     // Clear errors and proceed
     setErrors({ name: '' });
