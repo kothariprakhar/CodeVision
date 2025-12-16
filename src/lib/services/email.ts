@@ -39,10 +39,25 @@ interface WaitlistData {
 }
 
 interface FeedbackData {
-  email: string;
+  user_email: string;
+  user_id: string;
+  category: 'bug_report' | 'feature_request' | 'general_feedback';
   message: string;
-  page_url?: string;
-  user_id?: string;
+  page_url: string;
+  project_id?: string;
+  project_name?: string;
+  browser_info: {
+    user_agent: string;
+    screen_width: number;
+    screen_height: number;
+    viewport_width: number;
+    viewport_height: number;
+  };
+  console_logs?: Array<{
+    level: 'error' | 'warn';
+    message: string;
+    timestamp: number;
+  }>;
 }
 
 async function getAdminEmails(): Promise<string[]> {
@@ -95,21 +110,75 @@ export async function sendFeedbackNotification(data: FeedbackData) {
   const adminEmails = await getAdminEmails();
   const resend = getResendClient();
 
+  // Category badge colors
+  const categoryColors = {
+    bug_report: '#EF4444',
+    feature_request: '#3B82F6',
+    general_feedback: '#6B7280',
+  };
+
+  const categoryLabels = {
+    bug_report: '🐛 Bug Report',
+    feature_request: '✨ Feature Request',
+    general_feedback: '💬 General Feedback',
+  };
+
+  const categoryColor = categoryColors[data.category];
+  const categoryLabel = categoryLabels[data.category];
+
+  // Browser info summary
+  const browserSummary = `${data.browser_info.user_agent.split(' ')[0]} | ${data.browser_info.screen_width}x${data.browser_info.screen_height}`;
+
+  // Recent errors section
+  const errorsHtml = data.console_logs && data.console_logs.length > 0
+    ? `
+      <h3 style="margin-top: 20px; color: #EF4444;">Recent Console Errors</h3>
+      <ul style="background: #FEF2F2; padding: 15px; border-radius: 8px;">
+        ${data.console_logs.map(log => `
+          <li style="margin: 5px 0; font-family: monospace; font-size: 12px;">
+            <strong>[${log.level}]</strong> ${log.message}
+            <span style="color: #666; font-size: 11px;">(${new Date(log.timestamp).toLocaleTimeString()})</span>
+          </li>
+        `).join('')}
+      </ul>
+    `
+    : '';
+
+  // Project link section
+  const projectHtml = data.project_id && data.project_name
+    ? `<p><strong>Project:</strong> ${data.project_name} (<code>${data.project_id}</code>)</p>`
+    : '';
+
   const { error } = await resend.emails.send({
-    from: 'Code Vision <noreply@yourdomain.com>', // Update with your verified domain
+    from: 'Code Vision <noreply@yourdomain.com>',
     to: adminEmails,
-    subject: `[Code Vision] New Feedback from ${data.email}`,
+    subject: `[Code Vision] ${categoryLabel} from ${data.user_email}`,
     html: `
-      <h2>New Feedback Submission</h2>
-      <p><strong>Email:</strong> ${data.email}</p>
-      ${data.user_id ? `<p><strong>User ID:</strong> ${data.user_id}</p>` : ''}
-      ${data.page_url ? `<p><strong>Page:</strong> ${data.page_url}</p>` : ''}
-      <p><strong>Message:</strong></p>
-      <p>${data.message}</p>
-      <hr />
-      <p style="color: #666; font-size: 12px;">
-        Submitted at ${new Date().toLocaleString()}
-      </p>
+      <div style="font-family: sans-serif; max-width: 600px;">
+        <div style="background: ${categoryColor}; color: white; padding: 15px; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0;">${categoryLabel}</h2>
+        </div>
+
+        <div style="border: 1px solid #E5E7EB; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
+          <p><strong>From:</strong> ${data.user_email}</p>
+          <p><strong>User ID:</strong> <code>${data.user_id}</code></p>
+          ${projectHtml}
+          <p><strong>Page:</strong> <a href="${data.page_url}">${data.page_url}</a></p>
+          <p><strong>Browser:</strong> ${browserSummary}</p>
+
+          <h3 style="margin-top: 20px;">Message</h3>
+          <div style="background: #F9FAFB; padding: 15px; border-radius: 8px; white-space: pre-wrap;">
+${data.message}
+          </div>
+
+          ${errorsHtml}
+
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #E5E7EB;" />
+          <p style="color: #666; font-size: 12px;">
+            Submitted at ${new Date().toLocaleString()}
+          </p>
+        </div>
+      </div>
     `,
   });
 
