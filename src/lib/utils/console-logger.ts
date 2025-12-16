@@ -23,9 +23,16 @@ export function initializeConsoleLogger() {
 
   // Override console.error
   console.error = (...args: any[]) => {
-    const message = args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-    ).join(' ');
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (err) {
+          return '[Object (circular or non-serializable)]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
 
     consoleBuffer.push({
       level: 'error',
@@ -44,9 +51,16 @@ export function initializeConsoleLogger() {
 
   // Override console.warn
   console.warn = (...args: any[]) => {
-    const message = args.map(arg =>
-      typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-    ).join(' ');
+    const message = args.map(arg => {
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg);
+        } catch (err) {
+          return '[Object (circular or non-serializable)]';
+        }
+      }
+      return String(arg);
+    }).join(' ');
 
     consoleBuffer.push({
       level: 'warn',
