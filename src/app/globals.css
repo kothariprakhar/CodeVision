@@ -311,3 +311,17 @@ body {
     0 0 0 2px rgba(147, 51, 234, 0.2),
     0 0 0 4px rgba(147, 51, 234, 0.1);
 }
+
+/* Slide in from right animation */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
