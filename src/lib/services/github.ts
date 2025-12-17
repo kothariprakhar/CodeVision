@@ -272,10 +272,16 @@ export async function extractGitMetadata(
     if (headContent.startsWith('ref:')) {
       const refPath = path.join(repoPath, '.git', headContent.replace('ref: ', ''));
       if (fs.existsSync(refPath)) {
-        commitHash = fs.readFileSync(refPath, 'utf-8').trim().substring(0, 7);
+        commitHash = fs.readFileSync(refPath, 'utf-8').trim();
       }
     } else {
-      commitHash = headContent.substring(0, 7);
+      commitHash = headContent;
+    }
+
+    // Validate commit hash was extracted
+    if (!commitHash) {
+      console.warn('Could not determine commit hash');
+      return null;
     }
 
     // Build commit URL from GitHub URL
