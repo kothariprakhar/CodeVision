@@ -127,3 +127,37 @@ export interface ManualAPIMapping {
   backendEndpoint: string;
   backendAnalysisId: string;
 }
+
+export interface Element {
+  id: string;
+  analysis_id: string;
+  selector: string | null;
+  element_type: string | null;
+  component_name: string | null;
+  file_path: string | null;
+  line_number: number | null;
+  handlers: ElementHandler[];
+  api_calls: ElementAPICall[];
+  state_updates: StateUpdate[];
+  parent_element_id: string | null;
+  created_at: string;
+}
+
+export interface ElementHandler {
+  name: string;
+  file: string;
+  line: number;
+  code?: string;
+}
+
+export interface ElementAPICall {
+  method: string;
+  path: string;
+  file: string;
+  line: number;
+}
+
+export interface StateUpdate {
+  variable: string;
+  action: string;
+}
