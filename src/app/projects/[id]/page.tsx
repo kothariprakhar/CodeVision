@@ -7,6 +7,8 @@ import Tabs from '@/components/Tabs';
 import ArchitectureDiagram from '@/components/ArchitectureDiagram';
 import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import ChatBot from '@/components/ChatBot';
+import FeedbackPrompt from '@/components/FeedbackPrompt';
+import FeedbackPanel from '@/components/FeedbackPanel';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
@@ -79,6 +81,9 @@ export default function ProjectDetail() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('architecture');
+  const [isFeedbackPanelOpen, setIsFeedbackPanelOpen] = useState(false);
+  const [showFeedbackPrompt, setShowFeedbackPrompt] = useState(false);
+  const [hasShownPrompt, setHasShownPrompt] = useState(false);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -148,6 +153,18 @@ export default function ProjectDetail() {
       router.push('/login');
     }
   }, [user, authLoading, router]);
+
+  // Show feedback prompt 12 seconds after first analysis completes
+  useEffect(() => {
+    if (!analysis || hasShownPrompt) return;
+
+    const timer = setTimeout(() => {
+      setShowFeedbackPrompt(true);
+      setHasShownPrompt(true);
+    }, 12000);
+
+    return () => clearTimeout(timer);
+  }, [analysis, hasShownPrompt]);
 
   const handleVersionChange = (versionId: string) => {
     setSelectedVersion(versionId);
@@ -510,6 +527,18 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+
+      {/* Feedback Prompt */}
+      {showFeedbackPrompt && (
+        <FeedbackPrompt onOpenFeedback={() => setIsFeedbackPanelOpen(true)} />
+      )}
+
+      {/* Feedback Panel */}
+      <FeedbackPanel
+        isOpen={isFeedbackPanelOpen}
+        onClose={() => setIsFeedbackPanelOpen(false)}
+        projectId={projectId}
+      />
     </div>
   );
 }
