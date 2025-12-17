@@ -31,6 +31,27 @@ export function useAuth() {
     fetchUser();
   }, [fetchUser]);
 
+  // Refetch user data when window gains focus (handles login in same tab)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchUser();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [fetchUser]);
+
+  // Poll for auth changes every 2 seconds when document is visible
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchUser();
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [fetchUser]);
+
   const logout = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     setState({ user: null, loading: false });
