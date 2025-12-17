@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser, getUserByEmail } from '@/lib/repositories/users';
-import { createToken, setAuthCookie, isAllowedEmail } from '@/lib/auth';
+import { isAllowedEmail } from '@/lib/auth';
+import { createEmailVerification } from '@/lib/repositories/email-verifications';
+import { sendOTPEmail } from '@/lib/services/email';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 
@@ -76,18 +78,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create user
+    // Create user (email_verified will default to false)
     const user = await createUser({ email, password });
 
-    // Create token and set cookie
-    const token = createToken(user);
-    const response = NextResponse.json(
-      { user: { id: user.id, email: user.email } },
+    // Generate OTP
+    const { code, expiresInMinutes } = await createEmailVerification(user.id);
+
+    // Send OTP email
+    await sendOTPEmail({
+      email: user.email,
+      code,
+      expiresInMinutes,
+    });
+
+    return NextResponse.json(
+      {
+        message: 'Account created. Please check your email for verification code.',
+        email: user.email,
+        requiresVerification: true,
+      },
       { status: 201 }
     );
-    setAuthCookie(response, token);
-
-    return response;
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json(

@@ -26,6 +26,11 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if user needs to verify email
+        if (response.status === 403 && data.requiresVerification) {
+          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          return;
+        }
         throw new Error(data.error || 'Login failed');
       }
 

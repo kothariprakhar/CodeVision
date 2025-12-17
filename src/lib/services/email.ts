@@ -204,3 +204,57 @@ ${escapeHtml(data.message)}
 
   return { success: true };
 }
+
+interface OTPData {
+  email: string;
+  code: string;
+  expiresInMinutes: number;
+}
+
+export async function sendOTPEmail(data: OTPData) {
+  const resend = getResendClient();
+
+  const { error } = await resend.emails.send({
+    from: 'Code Vision <onboarding@resend.dev>',
+    to: [data.email],
+    subject: 'Verify your Code Vision email',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: white; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="margin: 0; font-size: 28px;">Welcome to Code Vision!</h1>
+        </div>
+
+        <div style="border: 1px solid #E5E7EB; border-top: none; padding: 40px; border-radius: 0 0 12px 12px; background: white;">
+          <p style="font-size: 16px; color: #374151; margin-bottom: 20px;">
+            Thanks for signing up! To complete your registration, please verify your email address with the code below:
+          </p>
+
+          <div style="background: #F9FAFB; border: 2px dashed #A855F7; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
+            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #A855F7; font-family: monospace;">
+              ${escapeHtml(data.code)}
+            </div>
+          </div>
+
+          <p style="font-size: 14px; color: #6B7280; margin-top: 20px;">
+            This code will expire in <strong>${data.expiresInMinutes} minutes</strong>.
+          </p>
+
+          <p style="font-size: 14px; color: #6B7280; margin-top: 30px;">
+            If you didn't create an account with Code Vision, you can safely ignore this email.
+          </p>
+        </div>
+
+        <div style="text-align: center; padding: 20px; color: #9CA3AF; font-size: 12px;">
+          <p>Code Vision - Chrome DevTools for Understanding Code</p>
+        </div>
+      </div>
+    `,
+  });
+
+  if (error) {
+    console.error('Failed to send OTP email:', error);
+    throw error;
+  }
+
+  return { success: true };
+}

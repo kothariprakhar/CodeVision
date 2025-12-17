@@ -22,7 +22,17 @@ export interface User {
   id: string;
   email: string;
   password_hash: string;
+  email_verified: boolean;
   created_at: string;
+}
+
+export interface EmailVerification {
+  id: string;
+  user_id: string;
+  code: string;
+  expires_at: string;
+  created_at: string;
+  used_at: string | null;
 }
 
 export interface ChatMessage {

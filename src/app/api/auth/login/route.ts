@@ -40,6 +40,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if email is verified
+    if (!user.email_verified) {
+      return NextResponse.json(
+        {
+          error: 'Email not verified',
+          requiresVerification: true,
+          email: user.email,
+        },
+        { status: 403 }
+      );
+    }
+
     // Create token and set cookie
     const token = createToken(user);
     const response = NextResponse.json({

@@ -48,6 +48,13 @@ export default function SignupPage() {
         throw new Error(data.error || 'Signup failed');
       }
 
+      // Check if verification is required
+      if (data.requiresVerification) {
+        // Redirect to verification page
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+
       // Successful signup - redirect to home
       router.push('/');
       router.refresh();

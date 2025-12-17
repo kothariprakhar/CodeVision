@@ -35,6 +35,20 @@ Execute these migrations in the following order:
 
 **Note:** This creates a new `feedback` table separate from the `feedback_submissions` table in migration 002. The new table has richer context capture capabilities.
 
+### add-email-verification.sql
+**Status:** Pending manual execution
+**Description:** Email verification system using OTP codes sent via email:
+- Adds `email_verified` column to users table (defaults to false)
+- Creates `email_verifications` table for storing 6-digit OTP codes
+- Includes expiration tracking (15-minute validity)
+- Foreign key constraints and indexes for performance
+- Supports resend functionality with rate limiting
+
+**Required Environment Variables:**
+- `RESEND_API_KEY` - For sending OTP emails via Resend
+
+**Note:** All existing users will have `email_verified = false` after migration. You may want to manually update trusted users.
+
 ## How to Apply Migrations
 
 1. Navigate to your Supabase project dashboard
@@ -130,6 +144,7 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 001 | initial_setup | 2024-11-XX | System | Applied |
 | 002 | northwestern_features | 2024-12-13 | System | Applied |
 | 003 | feedback_table | 2025-12-16 | Pending | Pending |
+| - | add-email-verification | 2025-12-17 | Pending | Pending |
 
 ## Troubleshooting
 
