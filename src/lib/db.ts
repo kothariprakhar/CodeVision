@@ -105,3 +105,25 @@ export interface ArchitectureVisualization {
   nodes: ArchitectureNode[];
   edges: ArchitectureEdge[];
 }
+
+export interface Workspace {
+  id: string;
+  user_id: string;
+  name: string;
+  domain_mappings: DomainMapping[];
+  analysis_ids: string[];
+  manual_mappings: ManualAPIMapping[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainMapping {
+  domain: string;
+  analysisId: string;
+}
+
+export interface ManualAPIMapping {
+  frontendCall: string;
+  backendEndpoint: string;
+  backendAnalysisId: string;
+}
