@@ -1,8 +1,28 @@
 // ABOUTME: Repository layer for Chrome plugin workspaces (multi-repo configurations)
 // ABOUTME: Handles CRUD operations for workspace entities with domain and API mappings
 
+import { z } from 'zod';
 import { supabase } from '../db';
 import type { Workspace, DomainMapping, ManualAPIMapping } from '../db';
+
+const DomainMappingSchema = z.object({
+  domain: z.string().min(1, 'Domain must not be empty'),
+  analysisId: z.string().uuid('analysisId must be a valid UUID'),
+});
+
+const ManualAPIMappingSchema = z.object({
+  frontendCall: z.string().min(1, 'Frontend call must not be empty'),
+  backendEndpoint: z.string().min(1, 'Backend endpoint must not be empty'),
+  backendAnalysisId: z.string().uuid('backendAnalysisId must be a valid UUID'),
+});
+
+const CreateWorkspaceSchema = z.object({
+  user_id: z.string().uuid('user_id must be a valid UUID'),
+  name: z.string().min(1, 'Name must not be empty').max(255, 'Name must not exceed 255 characters'),
+  domain_mappings: z.array(DomainMappingSchema).optional(),
+  analysis_ids: z.array(z.string().uuid('Each analysis_id must be a valid UUID')).optional(),
+  manual_mappings: z.array(ManualAPIMappingSchema).optional(),
+});
 
 export interface CreateWorkspaceInput {
   user_id: string;
@@ -20,14 +40,16 @@ export interface UpdateWorkspaceInput {
 }
 
 export async function createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
+  const validated = CreateWorkspaceSchema.parse(input);
+
   const { data, error } = await supabase
     .from('workspaces')
     .insert({
-      user_id: input.user_id,
-      name: input.name,
-      domain_mappings: input.domain_mappings || [],
-      analysis_ids: input.analysis_ids || [],
-      manual_mappings: input.manual_mappings || [],
+      user_id: validated.user_id,
+      name: validated.name,
+      domain_mappings: validated.domain_mappings || [],
+      analysis_ids: validated.analysis_ids || [],
+      manual_mappings: validated.manual_mappings || [],
     })
     .select()
     .single();
