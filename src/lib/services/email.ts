@@ -91,7 +91,7 @@ export async function sendWaitlistNotification(data: WaitlistData) {
   const resend = getResendClient();
 
   const { error } = await resend.emails.send({
-    from: 'Code Vision <noreply@yourdomain.com>', // Update with your verified domain
+    from: 'Code Vision <onboarding@resend.dev>', // Resend test domain for development
     to: adminEmails,
     subject: `[Code Vision] New Waitlist Request from ${escapeHtml(data.name)}`,
     html: `
@@ -165,7 +165,7 @@ export async function sendFeedbackNotification(data: FeedbackData) {
     : '';
 
   const { error } = await resend.emails.send({
-    from: 'Code Vision <noreply@yourdomain.com>',
+    from: 'Code Vision <onboarding@resend.dev>', // Resend test domain for development
     to: adminEmails,
     subject: `[Code Vision] ${categoryLabel} from ${escapeHtml(data.user_email)}`,
     html: `
