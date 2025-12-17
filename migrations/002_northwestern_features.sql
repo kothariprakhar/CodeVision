@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS admin_config (
 
 -- Seed admin config with default admin emails
 INSERT INTO admin_config (key, value) VALUES
-  ('admin_emails', '["admin@northwestern.edu"]'::jsonb)
+  ('admin_emails', '["sabari.sunil@kellogg.northwestern.edu"]'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- Waitlist requests from non-Northwestern users
