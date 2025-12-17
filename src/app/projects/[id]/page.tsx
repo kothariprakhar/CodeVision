@@ -154,6 +154,25 @@ export default function ProjectDetail() {
     }
   }, [user, authLoading, router]);
 
+  // Poll for analysis completion when project is analyzing
+  useEffect(() => {
+    if (!project || project.status !== 'analyzing') {
+      setAnalyzing(false);
+      return;
+    }
+
+    // Set analyzing state to show UI feedback
+    setAnalyzing(true);
+
+    // Poll every 3 seconds to check if analysis is complete
+    const pollInterval = setInterval(async () => {
+      await fetchProject();
+      await fetchVersions();
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [project, fetchProject, fetchVersions]);
+
   // Show feedback prompt 12 seconds after first analysis completes
   useEffect(() => {
     if (!analysis || hasShownPrompt) return;
