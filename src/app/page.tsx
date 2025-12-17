@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { LogoMark } from '@/components/Logo';
 
 interface Project {
   id: string;
@@ -79,11 +80,7 @@ export default function Home() {
         {/* Hero Section */}
         <div className="text-center mb-20">
           <div className="inline-block animate-float mb-6">
-            <div className="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-purple-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-purple-500/30">
-              <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-              </svg>
-            </div>
+            <LogoMark className="w-24 h-24 mx-auto" />
           </div>
           <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
             <span className="gradient-text">Chrome DevTools</span>
