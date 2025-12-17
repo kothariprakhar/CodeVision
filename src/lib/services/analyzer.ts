@@ -1,7 +1,7 @@
 import { getProject, updateProject } from '../repositories/projects';
 import { getDocumentsByProject } from '../repositories/documents';
 import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/analysis';
-import { downloadRepository, cloneRepository, getRelevantFiles } from './github';
+import { downloadRepository, cloneRepository, getRelevantFiles, extractGitMetadata } from './github';
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 
@@ -80,31 +80,38 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
         content: readCodeFile(repoPath, filePath),
       }));
 
+      // NEW: Extract git metadata
+      const gitMetadata = await extractGitMetadata(repoPath, project.github_url);
+
       console.log(`Successfully downloaded repository and loaded ${codeFiles.length} code files`);
+      console.log('Git metadata:', gitMetadata);
+
+      // Run Claude analysis
+      const analysisOutput = await analyzeCodeAlignment({
+        documents: parsedDocs,
+        codeFiles,
+      });
+
+      // Save results with git metadata
+      const result = await createAnalysisResult({
+        project_id: projectId,
+        summary: analysisOutput.summary,
+        findings: analysisOutput.findings,
+        architecture: analysisOutput.architecture,
+        raw_response: analysisOutput.raw_response,
+        branch: gitMetadata?.branch,           // NEW
+        commit_hash: gitMetadata?.commitHash,   // NEW
+        commit_url: gitMetadata?.commitUrl,     // NEW
+      });
+
+      // Update project status
+      await updateProject(projectId, { status: 'completed' });
+
+      return { success: true, analysisId: result.id };
     } else {
       await updateProject(projectId, { status: 'failed' });
       return { success: false, error: downloadResult.error || 'Failed to download repository' };
     }
-
-    // Run Claude analysis
-    const analysisOutput = await analyzeCodeAlignment({
-      documents: parsedDocs,
-      codeFiles,
-    });
-
-    // Save results
-    const result = await createAnalysisResult({
-      project_id: projectId,
-      summary: analysisOutput.summary,
-      findings: analysisOutput.findings,
-      architecture: analysisOutput.architecture,
-      raw_response: analysisOutput.raw_response,
-    });
-
-    // Update project status
-    await updateProject(projectId, { status: 'completed' });
-
-    return { success: true, analysisId: result.id };
   } catch (error) {
     await updateProject(projectId, { status: 'failed' });
     return {

@@ -239,3 +239,56 @@ export function getRelevantFiles(repoPath: string): string[] {
   walkDir(repoPath);
   return relevantFiles;
 }
+
+interface GitMetadata {
+  branch: string;
+  commitHash: string;
+  commitUrl: string;
+}
+
+export async function extractGitMetadata(
+  repoPath: string,
+  githubUrl: string
+): Promise<GitMetadata | null> {
+  try {
+    // Try to read git info from repository directory
+    const gitHeadPath = path.join(repoPath, '.git', 'HEAD');
+
+    if (!fs.existsSync(gitHeadPath)) {
+      console.warn('No .git directory found, cannot extract git metadata');
+      return null;
+    }
+
+    // Read branch name from HEAD
+    const headContent = fs.readFileSync(gitHeadPath, 'utf-8').trim();
+    let branch = 'main'; // default
+
+    if (headContent.startsWith('ref: refs/heads/')) {
+      branch = headContent.replace('ref: refs/heads/', '');
+    }
+
+    // Read commit hash
+    let commitHash = '';
+    if (headContent.startsWith('ref:')) {
+      const refPath = path.join(repoPath, '.git', headContent.replace('ref: ', ''));
+      if (fs.existsSync(refPath)) {
+        commitHash = fs.readFileSync(refPath, 'utf-8').trim().substring(0, 7);
+      }
+    } else {
+      commitHash = headContent.substring(0, 7);
+    }
+
+    // Build commit URL from GitHub URL
+    const cleanUrl = githubUrl.replace(/\.git$/, '');
+    const commitUrl = `${cleanUrl}/commit/${commitHash}`;
+
+    return {
+      branch,
+      commitHash,
+      commitUrl,
+    };
+  } catch (error) {
+    console.error('Failed to extract git metadata:', error);
+    return null;
+  }
+}

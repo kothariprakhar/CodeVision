@@ -7,6 +7,9 @@ export interface CreateAnalysisInput {
   findings: Finding[];
   architecture: ArchitectureVisualization;
   raw_response: string;
+  branch?: string;           // NEW
+  commit_hash?: string;      // NEW
+  commit_url?: string;       // NEW
 }
 
 export async function createAnalysis(input: CreateAnalysisInput): Promise<AnalysisResult> {
@@ -19,6 +22,9 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
       architecture: input.architecture, // JSONB - no stringify needed
       chat_history: [], // JSONB - no stringify needed
       raw_response: input.raw_response,
+      branch: input.branch,                 // NEW
+      commit_hash: input.commit_hash,       // NEW
+      commit_url: input.commit_url,         // NEW
     })
     .select()
     .single();

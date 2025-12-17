@@ -73,6 +73,9 @@ export interface AnalysisResult {
   chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
+  branch?: string;          // NEW: Git branch name
+  commit_hash?: string;     // NEW: Commit SHA
+  commit_url?: string;      // NEW: GitHub commit URL
 }
 
 export interface Finding {
