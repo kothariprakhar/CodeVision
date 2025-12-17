@@ -83,25 +83,22 @@ export default function Home() {
             <LogoMark className="w-24 h-24 mx-auto" />
           </div>
           <h1 className="text-6xl md:text-7xl font-bold mb-6 leading-tight">
-            <span className="gradient-text">Chrome DevTools</span>
+            <span className="gradient-text">Understand Any Codebase</span>
             <br />
-            <span className="text-white">for Understanding Code</span>
+            <span className="text-white">in Minutes, Not Weeks</span>
           </h1>
           <p className="text-2xl text-gray-300 max-w-3xl mx-auto mb-4 leading-relaxed">
-            Right-click any UI element to see its complete technical stack
+            AI-powered analysis for requirements validation and instant architecture understanding
           </p>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10">
-            From button clicks to database queries—trace the entire data flow instantly
+            Whether it's AI-generated, outsourced, or inherited—master unfamiliar codebases fast
           </p>
-          <div className="flex items-center justify-center gap-4 mb-12">
+          <div className="flex items-center justify-center gap-4">
             <Link
               href="/signup"
               className="btn-primary inline-flex items-center gap-2 text-white px-10 py-5 rounded-xl text-xl font-semibold shadow-xl shadow-purple-500/30 hover:shadow-purple-500/50 transition-all"
             >
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Get Early Access
+              Start Analyzing
             </Link>
             <Link
               href="/login"
@@ -110,249 +107,214 @@ export default function Home() {
               Sign In
             </Link>
           </div>
-
-          {/* Chrome Extension Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-purple-500/30 text-sm text-gray-300">
-            <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm0 2c5.52 0 10 4.48 10 10s-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2zm0 3c-3.87 0-7 3.13-7 7s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm0 2c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5z"/>
-            </svg>
-            <span>Chrome Extension</span>
-            <span className="text-purple-400">•</span>
-            <span>Coming Soon</span>
-          </div>
         </div>
 
-        {/* Inspect Element Demo Visual */}
-        <div className="mb-20 glass-strong rounded-3xl p-8 border border-purple-500/20">
-          <div className="grid md:grid-cols-2 gap-8 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium mb-4">
-                <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></span>
-                HOW IT WORKS
-              </div>
-              <h2 className="text-3xl font-bold text-white mb-4">
-                Inspect Element, Meet Inspect Stack
-              </h2>
-              <p className="text-gray-400 mb-6 leading-relaxed">
-                Just like Chrome DevTools reveals HTML and CSS, Code Vision reveals the complete technical architecture behind every UI element.
-              </p>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-purple-400 font-bold">1</span>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-semibold mb-1">Right-click any element</h4>
-                    <p className="text-gray-400 text-sm">Button, form, table—anything on the page</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-indigo-400 font-bold">2</span>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-semibold mb-1">See the complete flow</h4>
-                    <p className="text-gray-400 text-sm">UI → API → Controller → Database</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-blue-400 font-bold">3</span>
-                  </div>
-                  <div>
-                    <h4 className="text-white font-semibold mb-1">Jump to code instantly</h4>
-                    <p className="text-gray-400 text-sm">Click any layer to open in your editor</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="relative">
-              {/* Visual representation of the flow */}
-              <div className="space-y-3">
-                <div className="glass rounded-xl p-4 border-l-4 border-purple-500">
-                  <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-                    </svg>
-                    <span className="text-white font-medium text-sm">UI Component</span>
-                  </div>
-                  <code className="text-purple-300 text-xs">{"<Button onClick={handleSubmit}>"}</code>
-                </div>
-                <div className="flex justify-center">
-                  <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                  </svg>
-                </div>
-                <div className="glass rounded-xl p-4 border-l-4 border-indigo-500">
-                  <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="text-white font-medium text-sm">API Route</span>
-                  </div>
-                  <code className="text-indigo-300 text-xs">POST /api/users/create</code>
-                </div>
-                <div className="flex justify-center">
-                  <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                  </svg>
-                </div>
-                <div className="glass rounded-xl p-4 border-l-4 border-blue-500">
-                  <div className="flex items-center gap-2 mb-1">
-                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                    </svg>
-                    <span className="text-white font-medium text-sm">Database</span>
-                  </div>
-                  <code className="text-blue-300 text-xs">INSERT INTO users (name, email)</code>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Three Audience Sections */}
+        {/* Two Products Section */}
         <div className="mb-20">
-          <h2 className="text-4xl font-bold text-center text-white mb-12">
-            Built for Everyone in the Software Lifecycle
+          <div className="text-center mb-12">
+            <h2 className="text-4xl font-bold text-white mb-4">Two Tools, One Goal</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              Deep analysis for quality audits, live exploration for daily development
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Website Analysis */}
+            <div className="glass-strong rounded-3xl p-8 border border-purple-500/20">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Analysis Platform</h3>
+                  <span className="inline-block px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 text-xs font-medium">Available Now</span>
+                </div>
+              </div>
+              <p className="text-gray-400 mb-6">
+                Upload requirements and connect your GitHub repo. AI analyzes code quality, identifies gaps, and generates interactive architecture visualizations.
+              </p>
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">Requirements vs implementation analysis</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">AI-powered architecture visualization</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">Interactive chat with your analysis</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">Detailed reports with prioritized findings</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Chrome Plugin */}
+            <div className="glass-strong rounded-3xl p-8 border border-indigo-500/20">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm0 2c5.52 0 10 4.48 10 10s-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2zm0 3c-3.87 0-7 3.13-7 7s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm0 2c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Chrome Extension</h3>
+                  <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-medium">Coming Soon</span>
+                </div>
+              </div>
+              <p className="text-gray-400 mb-6">
+                Right-click any UI element in your running app to instantly see its complete technical stack—from frontend to database.
+              </p>
+              <ul className="space-y-3 text-sm">
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">Inspect any element like DevTools</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">See full data flow (UI → API → Database)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">Multi-repo support for microservices</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-gray-300">AI assistant in side panel</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+
+        {/* Key Use Cases */}
+        <div className="mb-20">
+          <h2 className="text-4xl font-bold text-center text-white mb-4">
+            Built for Modern Development Challenges
           </h2>
+          <p className="text-center text-gray-400 max-w-2xl mx-auto mb-12">
+            Whether you're inheriting code, auditing contractors, or onboarding new developers
+          </p>
           <div className="grid md:grid-cols-3 gap-8">
-            {/* Developers */}
+            {/* AI-Generated Code */}
             <div className="glass rounded-2xl p-8 hover-lift">
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center mb-4">
                 <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-white mb-3">For Developers</h3>
+              <h3 className="text-xl font-bold text-white mb-3">AI-Generated Codebases</h3>
               <p className="text-gray-400 mb-4">
-                Onboard to unfamiliar codebases 10x faster. Understand legacy systems without reading thousands of lines of code.
+                Cursor, v0, and Bolt generated your app—now understand what they built. See architecture, trace data flows, verify quality.
               </p>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Trace data flow from UI to database</span>
+                  <span>Verify AI implementation matches requirements</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Find API endpoints instantly</span>
+                  <span>Understand generated architecture instantly</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-purple-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Debug production issues faster</span>
+                  <span>Audit quality before deployment</span>
                 </li>
               </ul>
             </div>
 
-            {/* Founders/PMs */}
+            {/* Developer Onboarding */}
             <div className="glass rounded-2xl p-8 hover-lift">
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center mb-4">
+                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-3">Developer Onboarding</h3>
+              <p className="text-gray-400 mb-4">
+                New team members go from confused to productive in days instead of weeks. Explore architecture visually, ask AI questions, learn by clicking.
+              </p>
+              <ul className="space-y-2 text-sm text-gray-400">
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Visual exploration of codebase structure</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>AI assistant answers architecture questions</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Reduce ramp-up time by 70%</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Inherited/Outsourced Code */}
+            <div className="glass rounded-2xl p-8 hover-lift">
+              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mb-4">
                 <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-white mb-3">For Founders & PMs</h3>
+              <h3 className="text-xl font-bold text-white mb-3">Inherited & Outsourced Code</h3>
               <p className="text-gray-400 mb-4">
-                Verify contractors deliver what they promised. Audit code quality before acquisition. Make technical decisions with confidence.
-              </p>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span>Verify requirements vs implementation</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span>Assess technical debt before buying</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span>Get non-technical clarity on code</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Investors */}
-            <div className="glass rounded-2xl p-8 hover-lift">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mb-4">
-                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white mb-3">For Investors</h3>
-              <p className="text-gray-400 mb-4">
-                Conduct technical due diligence in hours, not weeks. Understand architecture risks before investment decisions.
+                Contractors left. Acquired a company. Previous team moved on. Understand what you inherited before it becomes your problem.
               </p>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>AI-powered technical due diligence</span>
+                  <span>Rapid technical due diligence</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Identify scalability bottlenecks</span>
+                  <span>Identify technical debt and risks</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Assess engineering team capabilities</span>
+                  <span>Get maintainable documentation instantly</span>
                 </li>
               </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Current Features */}
-        <div className="mb-20">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-bold text-white mb-4">Available Today</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
-              Start analyzing your codebase now with our AI-powered analysis platform
-            </p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="glass rounded-2xl p-6">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-white font-semibold mb-2 text-center">Requirements Analysis</h3>
-              <p className="text-gray-400 text-sm text-center">Upload specs, PRDs, or design docs—we compare them against your actual code</p>
-            </div>
-            <div className="glass rounded-2xl p-6">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <h3 className="text-white font-semibold mb-2 text-center">AI-Powered Insights</h3>
-              <p className="text-gray-400 text-sm text-center">Claude AI analyzes architecture, identifies gaps, and suggests improvements</p>
-            </div>
-            <div className="glass rounded-2xl p-6">
-              <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-white font-semibold mb-2 text-center">Interactive Reports</h3>
-              <p className="text-gray-400 text-sm text-center">Explore findings, chat with AI, visualize architecture—all in one dashboard</p>
             </div>
           </div>
         </div>
@@ -360,20 +322,20 @@ export default function Home() {
         {/* CTA Section */}
         <div className="glass-strong rounded-3xl p-12 text-center border border-purple-500/20">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Be First to Try the Chrome Extension
+            Stop Reading Code. Start Understanding It.
           </h2>
           <p className="text-xl text-gray-400 mb-8 max-w-2xl mx-auto">
-            Join our early access program and get the Chrome DevTools experience for understanding any codebase
+            Whether it's AI-generated, outsourced, or inherited—get instant clarity on any codebase
           </p>
           <Link
             href="/signup"
             className="btn-primary inline-flex items-center gap-3 text-white px-12 py-5 rounded-xl text-xl font-semibold shadow-2xl shadow-purple-500/30 hover:shadow-purple-500/50 transition-all"
           >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Get Early Access
+            Start Your First Analysis
           </Link>
+          <p className="text-sm text-gray-500 mt-4">
+            Analysis platform available now • Chrome extension coming soon
+          </p>
         </div>
       </div>
     );
