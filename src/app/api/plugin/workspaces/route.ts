@@ -3,9 +3,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/lib/auth';
-import { getUserWorkspaces } from '@/lib/repositories/workspaces';
+import { getUserWorkspaces, createWorkspace } from '@/lib/repositories/workspaces';
 import { getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
+import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,6 +60,24 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const DomainMappingSchema = z.object({
+  domain: z.string().min(1),
+  analysisId: z.string().uuid(),
+});
+
+const ManualAPIMappingSchema = z.object({
+  frontendCall: z.string().min(1),
+  backendEndpoint: z.string().min(1),
+  backendAnalysisId: z.string().uuid(),
+});
+
+const CreateWorkspaceBodySchema = z.object({
+  name: z.string().min(1).max(255),
+  domainMappings: z.array(DomainMappingSchema).optional(),
+  analysisIds: z.array(z.string().uuid()).optional(),
+  manualMappings: z.array(ManualAPIMappingSchema).optional(),
+});
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
@@ -67,13 +86,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, domainMappings, analysisIds, manualMappings } = body;
 
-    if (!name || typeof name !== 'string') {
-      return NextResponse.json({ error: 'name is required' }, { status: 400 });
+    const parsed = CreateWorkspaceBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message },
+        { status: 400 }
+      );
     }
 
-    const { createWorkspace } = await import('@/lib/repositories/workspaces');
+    const { name, domainMappings, analysisIds, manualMappings } = parsed.data;
 
     const workspace = await createWorkspace({
       user_id: user.id,
