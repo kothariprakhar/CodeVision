@@ -38,6 +38,42 @@ CREATE POLICY "Users can view own analysis elements" ON elements
     )
   );
 
+-- RLS Policy: Users can insert elements for their own analyses
+CREATE POLICY "Users can insert own analysis elements" ON elements
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM analysis_results ar
+      JOIN projects p ON p.id = ar.project_id
+      WHERE ar.id = elements.analysis_id
+      AND p.user_id = auth.uid()
+    )
+  );
+
+-- RLS Policy: Users can update elements for their own analyses
+CREATE POLICY "Users can update own analysis elements" ON elements
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM analysis_results ar
+      JOIN projects p ON p.id = ar.project_id
+      WHERE ar.id = elements.analysis_id
+      AND p.user_id = auth.uid()
+    )
+  );
+
+-- RLS Policy: Users can delete elements for their own analyses
+CREATE POLICY "Users can delete own analysis elements" ON elements
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM analysis_results ar
+      JOIN projects p ON p.id = ar.project_id
+      WHERE ar.id = elements.analysis_id
+      AND p.user_id = auth.uid()
+    )
+  );
+
 -- Add comments
 COMMENT ON TABLE elements IS 'Element-level UI analysis data for Chrome plugin inspection';
 COMMENT ON COLUMN elements.selector IS 'CSS/DOM selector for this element (e.g., button[data-testid="checkout"])';
