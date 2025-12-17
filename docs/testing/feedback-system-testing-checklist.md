@@ -6,7 +6,7 @@
 ## Prerequisites
 
 ### 1. Database Setup
-- [ ] Execute the SQL migration from `/home/sabari/dev/code-vision/docs/migrations/feedback-table.md` in Supabase SQL Editor
+- [ ] Execute the SQL migration from `/home/sabari/dev/code-vision/migrations/003_feedback_table.sql` in Supabase SQL Editor
 - [ ] Verify the `feedback` table was created successfully
 - [ ] Verify indexes are in place
 - [ ] Verify RLS policies are active
