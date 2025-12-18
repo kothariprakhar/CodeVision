@@ -70,7 +70,7 @@ Execute these migrations in the following order:
 
 **Note:** Elements table enables Chrome plugin to trace data flow from UI element → API call → database for each inspected element.
 
-### add-email-verification.sql
+### 007_add_email_verification.sql
 **Status:** Pending manual execution
 **Description:** Email verification system using OTP codes sent via email:
 - Adds `email_verified` column to users table (defaults to false)
@@ -182,7 +182,7 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 004 | add_git_metadata_to_analysis | 2025-12-17 | Pending | Pending |
 | 005 | create_workspaces_table | 2025-12-17 | Pending | Pending |
 | 006 | create_elements_table | 2025-12-17 | Pending | Pending |
-| - | add-email-verification | 2025-12-17 | Pending | Pending |
+| 007 | add_email_verification | 2025-12-17 | Pending | Pending |
 
 ## Troubleshooting
 
