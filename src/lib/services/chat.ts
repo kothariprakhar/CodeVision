@@ -9,6 +9,13 @@ import { getProjectRepoPath, downloadRepository, cloneRepository } from './githu
 
 const anthropic = new Anthropic();
 
+export interface ElementContext {
+  component?: string;
+  file?: string;
+  line?: number;
+  selector?: string;
+}
+
 interface ChatContext {
   summary: string;
   architecture: ArchitectureVisualization;
@@ -97,7 +104,8 @@ function determineResponseType(question: string): 'quick' | 'detailed' {
 export async function chat(
   projectId: string,
   analysisId: string,
-  message: string
+  message: string,
+  elementContext?: ElementContext
 ): Promise<ChatResponse> {
   // Get analysis context
   const analysis = await getAnalysisById(analysisId);
@@ -167,6 +175,11 @@ export async function chat(
     }
   }
 
+  // Build element context text
+  const elementContextText = elementContext
+    ? `\n\nCurrent Element Context:\nComponent: ${elementContext.component || 'unknown'}\nFile: ${elementContext.file || 'unknown'}\nLine: ${elementContext.line || 'unknown'}\nSelector: ${elementContext.selector || 'unknown'}\n\nThe user is inspecting this specific element. Prioritize information about this element in your response.`
+    : '';
+
   // Build system prompt
   const systemPrompt = `You are a helpful assistant for developers onboarding to a codebase.
 
@@ -175,6 +188,8 @@ ${context.summary}
 
 Architecture Components:
 ${context.architecture.nodes.map(n => `- ${n.name} (${n.type}): ${n.description}`).join('\n')}
+
+${elementContextText}
 
 ${responseType === 'quick'
   ? 'Provide a concise, direct answer. Be specific about file names and locations.'
