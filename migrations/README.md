@@ -35,6 +35,41 @@ Execute these migrations in the following order:
 
 **Note:** This creates a new `feedback` table separate from the `feedback_submissions` table in migration 002. The new table has richer context capture capabilities.
 
+### 004_add_git_metadata_to_analysis.sql
+**Status:** Pending manual execution
+**Description:** Chrome plugin support - git metadata for analysis tracking:
+- Adds `branch` column to analysis_results table (nullable)
+- Adds `commit_hash` column to analysis_results table (nullable, 40-char SHA)
+- Adds `commit_url` column to analysis_results table (nullable, GitHub commit link)
+- Enables Chrome plugin to display "Analysis: main@abc123" with commit links
+
+**Note:** Existing analyses will have NULL values for these fields. New analyses will capture git metadata automatically.
+
+### 005_create_workspaces_table.sql
+**Status:** Pending manual execution
+**Description:** Chrome plugin support - multi-repository workspace management:
+- Creates `workspaces` table for linking multiple repository analyses
+- `domain_mappings` JSONB field maps domains to analysis IDs
+- `analysis_ids` text array for workspace-owned analyses
+- `manual_mappings` JSONB for API endpoint overrides
+- Full RLS policies (SELECT, INSERT, UPDATE, DELETE)
+- Indexes on user_id and analysis_ids for performance
+
+**Note:** Workspaces enable Chrome plugin users to inspect full-stack applications where frontend and backend are separate repositories.
+
+### 006_create_elements_table.sql
+**Status:** Pending manual execution
+**Description:** Chrome plugin support - element-level code inspection:
+- Creates `elements` table for UI element analysis
+- `handlers` JSONB field stores event handler details
+- `api_calls` JSONB field stores API calls made by element
+- `state_updates` JSONB field stores state changes
+- Supports hierarchical elements via `parent_element_id`
+- Full RLS policies for all CRUD operations
+- Indexes on analysis_id and selectors for fast lookups
+
+**Note:** Elements table enables Chrome plugin to trace data flow from UI element → API call → database for each inspected element.
+
 ### add-email-verification.sql
 **Status:** Pending manual execution
 **Description:** Email verification system using OTP codes sent via email:
@@ -144,6 +179,9 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 001 | initial_setup | 2024-11-XX | System | Applied |
 | 002 | northwestern_features | 2024-12-13 | System | Applied |
 | 003 | feedback_table | 2025-12-16 | Pending | Pending |
+| 004 | add_git_metadata_to_analysis | 2025-12-17 | Pending | Pending |
+| 005 | create_workspaces_table | 2025-12-17 | Pending | Pending |
+| 006 | create_elements_table | 2025-12-17 | Pending | Pending |
 | - | add-email-verification | 2025-12-17 | Pending | Pending |
 
 ## Troubleshooting
