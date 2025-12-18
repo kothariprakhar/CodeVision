@@ -6,6 +6,11 @@ import { getUserFromRequest } from '@/lib/auth';
 import { getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
 import { getElementBySelector, getElementsByComponent } from '@/lib/repositories/elements';
+import { handleCorsPrelight, withCors } from '@/lib/cors';
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPrelight(request)!;
+}
 
 export async function GET(
   request: NextRequest,
@@ -14,7 +19,10 @@ export async function GET(
   try {
     const user = await getUserFromRequest(request);
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return withCors(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        request
+      );
     }
 
     const { id: analysisId } = await params;
@@ -26,12 +34,18 @@ export async function GET(
     // Verify analysis exists and user owns it
     const analysis = await getAnalysisById(analysisId);
     if (!analysis) {
-      return NextResponse.json({ error: 'Analysis not found' }, { status: 404 });
+      return withCors(
+        NextResponse.json({ error: 'Analysis not found' }, { status: 404 }),
+        request
+      );
     }
 
     const project = await getProject(analysis.project_id);
     if (!project || project.user_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return withCors(
+        NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        request
+      );
     }
 
     // Find element by selector or component name
@@ -50,12 +64,15 @@ export async function GET(
     }
 
     if (!element) {
-      return NextResponse.json(
-        {
-          error: 'Element not found',
-          message: 'This element is not in the current analysis. It may be new code added after analysis.',
-        },
-        { status: 404 }
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Element not found',
+            message: 'This element is not in the current analysis. It may be new code added after analysis.',
+          },
+          { status: 404 }
+        ),
+        request
       );
     }
 
@@ -80,21 +97,27 @@ export async function GET(
       database: null, // TODO: Extract database info from architecture in future
     };
 
-    return NextResponse.json({
-      element: {
-        selector: element.selector,
-        component: element.component_name,
-        file: element.file_path,
-        line: element.line_number,
-        type: element.element_type,
-      },
-      dataFlow,
-    });
+    return withCors(
+      NextResponse.json({
+        element: {
+          selector: element.selector,
+          component: element.component_name,
+          file: element.file_path,
+          line: element.line_number,
+          type: element.element_type,
+        },
+        dataFlow,
+      }),
+      request
+    );
   } catch (error) {
     console.error('Element data error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch element data' },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to fetch element data' },
+        { status: 500 }
+      ),
+      request
     );
   }
 }

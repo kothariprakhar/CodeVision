@@ -6,13 +6,21 @@ import { getUserFromRequest } from '@/lib/auth';
 import { getUserWorkspaces, createWorkspace } from '@/lib/repositories/workspaces';
 import { getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
+import { handleCorsPrelight, withCors } from '@/lib/cors';
 import { z } from 'zod';
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPrelight(request)!;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return withCors(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        request
+      );
     }
 
     // Get user's workspaces
@@ -50,12 +58,18 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ workspaces: enrichedWorkspaces });
+    return withCors(
+      NextResponse.json({ workspaces: enrichedWorkspaces }),
+      request
+    );
   } catch (error) {
     console.error('Plugin workspaces error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch workspaces' },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to fetch workspaces' },
+        { status: 500 }
+      ),
+      request
     );
   }
 }
@@ -82,16 +96,22 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return withCors(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        request
+      );
     }
 
     const body = await request.json();
 
     const parsed = CreateWorkspaceBodySchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0].message },
-        { status: 400 }
+      return withCors(
+        NextResponse.json(
+          { error: parsed.error.issues[0].message },
+          { status: 400 }
+        ),
+        request
       );
     }
 
@@ -105,12 +125,18 @@ export async function POST(request: NextRequest) {
       manual_mappings: manualMappings || [],
     });
 
-    return NextResponse.json({ workspace }, { status: 201 });
+    return withCors(
+      NextResponse.json({ workspace }, { status: 201 }),
+      request
+    );
   } catch (error) {
     console.error('Create workspace error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create workspace' },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to create workspace' },
+        { status: 500 }
+      ),
+      request
     );
   }
 }

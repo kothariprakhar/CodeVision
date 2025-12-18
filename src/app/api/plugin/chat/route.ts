@@ -6,7 +6,12 @@ import { getUserFromRequest } from '@/lib/auth';
 import { getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
 import { chat, ElementContext } from '@/lib/services/chat';
+import { handleCorsPrelight, withCors } from '@/lib/cors';
 import { z } from 'zod';
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPrelight(request)!;
+}
 
 const PluginChatSchema = z.object({
   analysisId: z.string().min(1),
@@ -23,19 +28,25 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getUserFromRequest(request);
     if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return withCors(
+        NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+        request
+      );
     }
 
     const body = await request.json();
     const validationResult = PluginChatSchema.safeParse(body);
 
     if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          error: 'Invalid request body',
-          details: validationResult.error.issues,
-        },
-        { status: 400 }
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Invalid request body',
+            details: validationResult.error.issues,
+          },
+          { status: 400 }
+        ),
+        request
       );
     }
 
@@ -44,12 +55,18 @@ export async function POST(request: NextRequest) {
     // Verify analysis exists and user owns it
     const analysis = await getAnalysisById(analysisId);
     if (!analysis) {
-      return NextResponse.json({ error: 'Analysis not found' }, { status: 404 });
+      return withCors(
+        NextResponse.json({ error: 'Analysis not found' }, { status: 404 }),
+        request
+      );
     }
 
     const project = await getProject(analysis.project_id);
     if (!project || project.user_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return withCors(
+        NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+        request
+      );
     }
 
     // Call chat service with optional element context
@@ -60,12 +77,15 @@ export async function POST(request: NextRequest) {
       elementContext as ElementContext | undefined
     );
 
-    return NextResponse.json(chatResponse);
+    return withCors(NextResponse.json(chatResponse), request);
   } catch (error) {
     console.error('Plugin chat error:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process chat request' },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to process chat request' },
+        { status: 500 }
+      ),
+      request
     );
   }
 }
