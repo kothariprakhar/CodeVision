@@ -367,7 +367,12 @@ Currently no rate limiting is implemented. Future versions may add:
 
 ## CORS Configuration
 
-API endpoints are configured for same-origin requests only. Chrome extension must:
+All plugin endpoints (`/api/plugin/*`) support CORS for Chrome extensions. The backend allows:
+- Requests from any `chrome-extension://` origin
+- Credentials (cookies) in cross-origin requests
+- Localhost and Vercel domains for development/production
+
+Chrome extension requirements:
 1. Use `credentials: 'include'` in all fetch calls
 2. Make requests from extension background script (not content script)
 3. Request host permissions for the API domain in manifest.json
