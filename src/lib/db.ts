@@ -73,6 +73,10 @@ export interface AnalysisResult {
   capability_graph?: CapabilityGraph | null;
   journey_graph?: JourneyGraph | null;
   quality_report?: QualityReport | null;
+  module_graph?: ModuleGraph | null;
+  module_quality_report?: ModuleQualityReport | null;
+  module_graph_3d?: ModuleGraph3D | null;
+  visual_quality_report?: VisualQualityReport | null;
   chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
@@ -269,4 +273,102 @@ export interface QualityReport {
   missing_signals: string[];
   assumptions: string[];
   needs_manual_input: string[];
+}
+
+export interface ModuleGraphNode {
+  id: string;
+  label: string;
+  module_type:
+    | 'module'
+    | 'service'
+    | 'api'
+    | 'ui'
+    | 'data'
+    | 'infra'
+    | 'library'
+    | 'integration'
+    | 'utility'
+    | 'unknown';
+  layer:
+    | 'presentation'
+    | 'application'
+    | 'domain'
+    | 'data'
+    | 'infrastructure'
+    | 'shared'
+    | 'unknown';
+  paths: string[];
+  importance_score: number;
+  confidence: number;
+  evidence: EvidenceRef[];
+}
+
+export interface ModuleGraphEdge {
+  from: string;
+  to: string;
+  relation: 'imports' | 'calls' | 'reads' | 'writes' | 'publishes' | 'depends_on';
+  confidence: number;
+  evidence: EvidenceRef[];
+}
+
+export interface ModuleGraph {
+  root_summary: string;
+  repo_archetype:
+    | 'web_app'
+    | 'api_service'
+    | 'library'
+    | 'data_ml'
+    | 'infra'
+    | 'mobile'
+    | 'desktop'
+    | 'unknown';
+  nodes: ModuleGraphNode[];
+  edges: ModuleGraphEdge[];
+}
+
+export interface ModuleQualityReport {
+  coverage_score: number;
+  low_confidence_ratio: number;
+  missing_signals: string[];
+  assumptions: string[];
+  fallback_mode: 'none' | 'tree_only' | 'manifest_only' | 'llm_only' | 'minimal';
+}
+
+export interface Module3DNode {
+  id: string;
+  label: string;
+  node_kind: 'directory' | 'file';
+  cluster_id: string;
+  path: string;
+  loc: number;
+  last_commit_at?: string;
+  hotness_score: number;
+  importance_score: number;
+  dependency_count: number;
+  confidence: number;
+  position_seed?: {
+    x: number;
+    y: number;
+    z: number;
+  };
+}
+
+export interface Module3DEdge {
+  from: string;
+  to: string;
+  edge_kind: 'imports' | 'depends_on' | 'calls';
+  confidence: number;
+}
+
+export interface ModuleGraph3D {
+  nodes: Module3DNode[];
+  edges: Module3DEdge[];
+}
+
+export interface VisualQualityReport {
+  history_available: boolean;
+  loc_coverage: number;
+  dependency_coverage: number;
+  fallback_mode: 'none' | 'tree_only' | 'manifest_only' | 'minimal';
+  notes: string[];
 }

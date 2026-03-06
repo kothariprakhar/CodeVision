@@ -11,6 +11,7 @@ import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
 import CapabilityMap from '@/components/CapabilityMap';
 import JourneyMap from '@/components/JourneyMap';
+import ArchitectureModuleMap from '@/components/ArchitectureModuleMap';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
@@ -320,7 +321,8 @@ export default function ProjectDetail() {
   }
 
   const tabs = [
-    { id: 'architecture', label: 'Architecture' },
+    { id: 'architecture-diagram', label: 'Architecture Diagram' },
+    { id: 'architecture', label: 'Legacy Architecture' },
     { id: 'capabilities', label: 'Business Capabilities' },
     { id: 'journeys', label: 'User Journeys' },
     { id: 'issues', label: `Issues${analysis ? ` (${analysis.findings.length})` : ''}` },
@@ -502,6 +504,57 @@ export default function ProjectDetail() {
               {analysis && selectedVersion && (
                 <div className="mt-6">
                   <ChatBot projectId={projectId} analysisId={selectedVersion} />
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'architecture-diagram' && (
+            <>
+              <div className="flex items-center justify-between mb-6">
+                {versions.length > 0 && (
+                  <AnalysisVersionSelector
+                    versions={versions}
+                    selectedVersion={selectedVersion}
+                    onChange={handleVersionChange}
+                  />
+                )}
+                <button
+                  onClick={runAnalysis}
+                  disabled={analyzing || documents.length === 0}
+                  className="btn-primary-refined px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2"
+                >
+                  {analyzing ? (
+                    <>
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Run Analysis
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {analysis && selectedVersion ? (
+                <ArchitectureModuleMap projectId={projectId} analysisId={selectedVersion} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">
+                    {project.status === 'analyzing'
+                      ? 'Analysis in progress...'
+                      : 'No architecture diagram data yet'}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {project.status !== 'analyzing' && 'Run analysis to generate module architecture diagrams.'}
+                  </p>
                 </div>
               )}
             </>
