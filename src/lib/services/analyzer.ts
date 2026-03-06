@@ -5,7 +5,6 @@ import { downloadRepository, cloneRepository, getRelevantFiles, extractGitMetada
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 import { generateBusinessLensArtifacts } from './lenses';
-import { generateModuleGraphArtifacts } from './module-graph';
 
 export interface AnalyzeProjectResult {
   success: boolean;
@@ -100,15 +99,6 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
         documents: parsedDocs,
         projectName: project.name,
       });
-      const moduleArtifacts = await generateModuleGraphArtifacts({
-        architecture: analysisOutput.architecture,
-        findings: analysisOutput.findings,
-        codeFiles,
-        repoPath,
-        projectName: project.name,
-        githubUrl: project.github_url,
-        githubToken: project.github_token,
-      });
 
       // Save results with git metadata
       const result = await createAnalysisResult({
@@ -119,10 +109,6 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
         capability_graph: lensArtifacts.capability_graph,
         journey_graph: lensArtifacts.journey_graph,
         quality_report: lensArtifacts.quality_report,
-        module_graph: moduleArtifacts.module_graph,
-        module_quality_report: moduleArtifacts.module_quality_report,
-        module_graph_3d: moduleArtifacts.module_graph_3d,
-        visual_quality_report: moduleArtifacts.visual_quality_report,
         raw_response: analysisOutput.raw_response,
         branch: gitMetadata?.branch,           // NEW
         commit_hash: gitMetadata?.commitHash,   // NEW

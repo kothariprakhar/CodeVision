@@ -62,10 +62,6 @@ export async function GET(
       capability_graph: analysis.capability_graph || null,
       journey_graph: analysis.journey_graph || null,
       quality_report: analysis.quality_report || null,
-      module_graph: analysis.module_graph || null,
-      module_quality_report: analysis.module_quality_report || null,
-      module_graph_3d: analysis.module_graph_3d || null,
-      visual_quality_report: analysis.visual_quality_report || null,
       analyzed_at: analysis.analyzed_at,
     });
   } catch (error) {

@@ -94,17 +94,6 @@ Execute these migrations in the following order:
 
 **Note:** Existing analyses will have `NULL` values for these fields. New analyses populate them automatically during analysis.
 
-### 009_add_module_graph_artifacts.sql
-**Status:** Pending manual execution
-**Description:** Architecture Diagram artifacts for module-level 2D/3D visualization:
-- Adds `module_graph` JSONB column to `analysis_results`
-- Adds `module_quality_report` JSONB column to `analysis_results`
-- Adds `module_graph_3d` JSONB column to `analysis_results`
-- Adds `visual_quality_report` JSONB column to `analysis_results`
-- Enables storing deterministic module graph outputs and 3D-ready visual payloads
-
-**Note:** Existing analyses will have `NULL` values for these fields. New analyses populate them automatically during analysis.
-
 ## How to Apply Migrations
 
 1. Navigate to your Supabase project dashboard
@@ -205,7 +194,6 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 006 | create_elements_table | 2025-12-17 | Pending | Pending |
 | 007 | add_email_verification | 2025-12-17 | Pending | Pending |
 | 008 | add_business_lenses_to_analysis | 2026-03-03 | Pending | Pending |
-| 009 | add_module_graph_artifacts | 2026-03-06 | Pending | Pending |
 
 ## Troubleshooting
 
