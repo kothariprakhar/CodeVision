@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProjectAnalysis, getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
 import { getUserFromRequest } from '@/lib/auth';
+import { generateBusinessLensArtifacts } from '@/lib/services/lenses';
 
 export async function GET(
   request: NextRequest,
@@ -14,31 +15,20 @@ export async function GET(
     }
 
     const { projectId } = await params;
-
-    // Verify project exists and user owns it
     const project = await getProject(projectId);
     if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
-
     if (project.user_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Check for version query param
     const { searchParams } = new URL(request.url);
     const analysisId = searchParams.get('version');
 
-    // Get analysis by specific version or latest
-    let analysis;
-    if (analysisId) {
-      analysis = await getAnalysisById(analysisId);
-    } else {
-      analysis = await getProjectAnalysis(projectId);
-    }
+    const analysis = analysisId
+      ? await getAnalysisById(analysisId)
+      : await getProjectAnalysis(projectId);
 
     if (!analysis) {
       return NextResponse.json(
@@ -47,26 +37,23 @@ export async function GET(
       );
     }
 
-    // JSONB fields are already objects, no parsing needed
-    const findings = analysis.findings;
-
-    // Architecture is already an object (with fallback for null/undefined)
-    const architecture = analysis.architecture || { nodes: [], edges: [] };
+    const generated = generateBusinessLensArtifacts({
+      architecture: analysis.architecture,
+      findings: analysis.findings,
+      projectName: project.name,
+    });
 
     return NextResponse.json({
-      id: analysis.id,
-      project_id: analysis.project_id,
-      summary: analysis.summary,
-      findings,
-      architecture,
-      capability_graph: analysis.capability_graph || null,
-      journey_graph: analysis.journey_graph || null,
-      quality_report: analysis.quality_report || null,
+      analysis_id: analysis.id,
+      project_id: projectId,
+      journey_graph: analysis.journey_graph || generated.journey_graph,
+      quality_report: analysis.quality_report || generated.quality_report,
       analyzed_at: analysis.analyzed_at,
     });
   } catch (error) {
+    console.error('Journeys API error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch analysis' },
+      { error: 'Failed to fetch user journey architecture' },
       { status: 500 }
     );
   }

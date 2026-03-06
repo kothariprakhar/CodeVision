@@ -84,6 +84,16 @@ Execute these migrations in the following order:
 
 **Note:** All existing users will have `email_verified = false` after migration. You may want to manually update trusted users.
 
+### 008_add_business_lenses_to_analysis.sql
+**Status:** Pending manual execution
+**Description:** Business-facing architecture lenses for non-technical stakeholders:
+- Adds `capability_graph` JSONB column to `analysis_results`
+- Adds `journey_graph` JSONB column to `analysis_results`
+- Adds `quality_report` JSONB column to `analysis_results`
+- Enables storing deterministic business capability and user journey outputs
+
+**Note:** Existing analyses will have `NULL` values for these fields. New analyses populate them automatically during analysis.
+
 ## How to Apply Migrations
 
 1. Navigate to your Supabase project dashboard
@@ -183,6 +193,7 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 005 | create_workspaces_table | 2025-12-17 | Pending | Pending |
 | 006 | create_elements_table | 2025-12-17 | Pending | Pending |
 | 007 | add_email_verification | 2025-12-17 | Pending | Pending |
+| 008 | add_business_lenses_to_analysis | 2026-03-03 | Pending | Pending |
 
 ## Troubleshooting
 

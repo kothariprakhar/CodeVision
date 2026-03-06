@@ -9,6 +9,8 @@ import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import ChatBot from '@/components/ChatBot';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
+import CapabilityMap from '@/components/CapabilityMap';
+import JourneyMap from '@/components/JourneyMap';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
@@ -319,6 +321,8 @@ export default function ProjectDetail() {
 
   const tabs = [
     { id: 'architecture', label: 'Architecture' },
+    { id: 'capabilities', label: 'Business Capabilities' },
+    { id: 'journeys', label: 'User Journeys' },
     { id: 'issues', label: `Issues${analysis ? ` (${analysis.findings.length})` : ''}` },
   ];
 
@@ -554,6 +558,36 @@ export default function ProjectDetail() {
                   </div>
                   <p className="font-medium text-gray-400">No issues found</p>
                   <p className="text-sm text-gray-600 mt-1">Everything looks good!</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'capabilities' && (
+            <>
+              {analysis && selectedVersion ? (
+                <CapabilityMap projectId={projectId} analysisId={selectedVersion} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No capability data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Run analysis to generate business capability architecture.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'journeys' && (
+            <>
+              {analysis && selectedVersion ? (
+                <JourneyMap projectId={projectId} analysisId={selectedVersion} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No journey data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Run analysis to generate user journey architecture.
+                  </p>
                 </div>
               )}
             </>

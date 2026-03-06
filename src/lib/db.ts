@@ -70,6 +70,9 @@ export interface AnalysisResult {
   summary: string;
   findings: Finding[];
   architecture: ArchitectureVisualization;
+  capability_graph?: CapabilityGraph | null;
+  journey_graph?: JourneyGraph | null;
+  quality_report?: QualityReport | null;
   chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
@@ -160,4 +163,110 @@ export interface ElementAPICall {
 export interface StateUpdate {
   variable: string;
   action: string;
+}
+
+export interface EvidenceRef {
+  source_type: 'file' | 'api_route' | 'db_table' | 'doc' | 'config' | 'inference';
+  ref: string;
+  snippet: string;
+  line_start?: number;
+  line_end?: number;
+}
+
+export interface LensRisk {
+  id: string;
+  title: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  impact: string;
+  confidence: number;
+  evidence: EvidenceRef[];
+}
+
+export interface CapabilityNode {
+  id: string;
+  name: string;
+  node_type:
+    | 'capability_domain'
+    | 'capability'
+    | 'sub_capability'
+    | 'system_component'
+    | 'api'
+    | 'datastore'
+    | 'external_service';
+  depth: 0 | 1 | 2;
+  description: string;
+  business_value: string;
+  maturity: 'nascent' | 'developing' | 'stable' | 'advanced' | 'unknown';
+  owner_role?: string;
+  confidence: number;
+  evidence: EvidenceRef[];
+  risks: LensRisk[];
+  kpis: string[];
+}
+
+export interface CapabilityEdge {
+  from: string;
+  to: string;
+  relation:
+    | 'contains'
+    | 'depends_on'
+    | 'enables'
+    | 'integrates_with'
+    | 'stores_in'
+    | 'exposes';
+  confidence: number;
+  evidence: EvidenceRef[];
+}
+
+export interface CapabilityGraph {
+  top_level_summary: string;
+  nodes: CapabilityNode[];
+  edges: CapabilityEdge[];
+}
+
+export interface JourneyStep {
+  id: string;
+  journey_id: string;
+  order: number;
+  name: string;
+  step_type:
+    | 'entry'
+    | 'action'
+    | 'validation'
+    | 'payment'
+    | 'system'
+    | 'notification'
+    | 'exit'
+    | 'unknown';
+  description: string;
+  business_outcome: string;
+  friction_risk: 'low' | 'medium' | 'high' | 'critical';
+  dropoff_likelihood?: number;
+  systems_touched: string[];
+  confidence: number;
+  evidence: EvidenceRef[];
+  risks: LensRisk[];
+}
+
+export interface Journey {
+  id: string;
+  name: string;
+  persona: string;
+  goal: string;
+  kpi: string;
+  steps: JourneyStep[];
+}
+
+export interface JourneyGraph {
+  summary: string;
+  journeys: Journey[];
+}
+
+export interface QualityReport {
+  coverage_score: number;
+  evidence_density: number;
+  low_confidence_ratio: number;
+  missing_signals: string[];
+  assumptions: string[];
+  needs_manual_input: string[];
 }
