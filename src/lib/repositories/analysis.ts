@@ -1,11 +1,22 @@
 import { supabase } from '../db';
-import type { AnalysisResult, Finding, ArchitectureVisualization, ChatMessage } from '../db';
+import type {
+  AnalysisResult,
+  Finding,
+  ArchitectureVisualization,
+  ChatMessage,
+  CapabilityGraph,
+  JourneyGraph,
+  QualityReport,
+} from '../db';
 
 export interface CreateAnalysisInput {
   project_id: string;
   summary: string;
   findings: Finding[];
   architecture: ArchitectureVisualization;
+  capability_graph?: CapabilityGraph;
+  journey_graph?: JourneyGraph;
+  quality_report?: QualityReport;
   raw_response: string;
   branch?: string;
   commit_hash?: string;
@@ -20,6 +31,9 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
       summary: input.summary,
       findings: input.findings, // JSONB - no stringify needed
       architecture: input.architecture, // JSONB - no stringify needed
+      capability_graph: input.capability_graph || null,
+      journey_graph: input.journey_graph || null,
+      quality_report: input.quality_report || null,
       chat_history: [], // JSONB - no stringify needed
       raw_response: input.raw_response,
       branch: input.branch,

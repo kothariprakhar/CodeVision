@@ -4,6 +4,7 @@ import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/ana
 import { downloadRepository, cloneRepository, getRelevantFiles, extractGitMetadata } from './github';
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
+import { generateBusinessLensArtifacts } from './lenses';
 
 export interface AnalyzeProjectResult {
   success: boolean;
@@ -92,12 +93,22 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
         codeFiles,
       });
 
+      const lensArtifacts = generateBusinessLensArtifacts({
+        architecture: analysisOutput.architecture,
+        findings: analysisOutput.findings,
+        documents: parsedDocs,
+        projectName: project.name,
+      });
+
       // Save results with git metadata
       const result = await createAnalysisResult({
         project_id: projectId,
         summary: analysisOutput.summary,
         findings: analysisOutput.findings,
         architecture: analysisOutput.architecture,
+        capability_graph: lensArtifacts.capability_graph,
+        journey_graph: lensArtifacts.journey_graph,
+        quality_report: lensArtifacts.quality_report,
         raw_response: analysisOutput.raw_response,
         branch: gitMetadata?.branch,           // NEW
         commit_hash: gitMetadata?.commitHash,   // NEW
