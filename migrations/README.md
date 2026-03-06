@@ -105,6 +105,15 @@ Execute these migrations in the following order:
 
 **Note:** Existing analyses will have `NULL` values for these fields. New analyses populate them automatically during analysis.
 
+### 010_add_module_layout_hints.sql
+**Status:** Pending manual execution
+**Description:** Structured layout hints for architecture diagram rendering:
+- Adds `module_layout_hints` JSONB column to `analysis_results`
+- Stores lanes, clusters, hotspots, focus paths, and renderer profile metadata
+- Enables deterministic + LLM-enriched diagram layouts with stable UI positioning
+
+**Note:** Existing analyses will have `NULL` values for this field. API routes include deterministic fallback hints when missing.
+
 ## How to Apply Migrations
 
 1. Navigate to your Supabase project dashboard
@@ -206,6 +215,7 @@ Currently, we don't have automated rollback scripts. If you need to rollback a m
 | 007 | add_email_verification | 2025-12-17 | Pending | Pending |
 | 008 | add_business_lenses_to_analysis | 2026-03-03 | Pending | Pending |
 | 009 | add_module_graph_artifacts | 2026-03-06 | Pending | Pending |
+| 010 | add_module_layout_hints | 2026-03-06 | Pending | Pending |
 
 ## Troubleshooting
 

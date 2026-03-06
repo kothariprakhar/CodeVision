@@ -51,7 +51,6 @@ export const ModuleGraphNodeSchema = z.object({
   layer: ModuleLayerSchema,
   paths: z.array(z.string().min(1)).default([]),
   importance_score: z.number().min(0).max(1),
-  confidence: z.number().min(0).max(1),
   evidence: z.array(EvidenceRefSchema).default([]),
 });
 
@@ -59,7 +58,6 @@ export const ModuleGraphEdgeSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
   relation: ModuleRelationSchema,
-  confidence: z.number().min(0).max(1),
   evidence: z.array(EvidenceRefSchema).default([]),
 });
 
@@ -68,6 +66,36 @@ export const ModuleGraphSchema = z.object({
   repo_archetype: RepoArchetypeSchema,
   nodes: z.array(ModuleGraphNodeSchema),
   edges: z.array(ModuleGraphEdgeSchema),
+});
+
+export const ModuleLayoutLaneSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  node_ids: z.array(z.string().min(1)).default([]),
+});
+
+export const ModuleLayoutClusterSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  node_ids: z.array(z.string().min(1)).default([]),
+});
+
+export const ModuleLayoutFocusPathSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const ModuleLayoutHintsSchema = z.object({
+  lanes: z.array(ModuleLayoutLaneSchema).default([]),
+  clusters: z.array(ModuleLayoutClusterSchema).default([]),
+  hotspots: z.array(z.string().min(1)).default([]),
+  focus_paths: z.array(ModuleLayoutFocusPathSchema).default([]),
+  render_profile: z.object({
+    preferred_2d: z.enum(['layered', 'radial', 'clustered']),
+    preferred_3d_density: z.enum(['compact', 'balanced', 'detailed']),
+  }),
+  narrative: z.string().min(1),
 });
 
 export const ModuleFallbackModeSchema = z.enum([
@@ -80,7 +108,6 @@ export const ModuleFallbackModeSchema = z.enum([
 
 export const ModuleQualityReportSchema = z.object({
   coverage_score: z.number().min(0).max(1),
-  low_confidence_ratio: z.number().min(0).max(1),
   missing_signals: z.array(z.string()),
   assumptions: z.array(z.string()),
   fallback_mode: ModuleFallbackModeSchema,
@@ -100,7 +127,6 @@ export const Module3DNodeSchema = z.object({
   hotness_score: z.number().min(0).max(1),
   importance_score: z.number().min(0).max(1),
   dependency_count: z.number().int().min(0),
-  confidence: z.number().min(0).max(1),
   position_seed: z.object({
     x: z.number(),
     y: z.number(),
@@ -112,7 +138,6 @@ export const Module3DEdgeSchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
   edge_kind: Module3DEdgeKindSchema,
-  confidence: z.number().min(0).max(1),
 });
 
 export const ModuleGraph3DSchema = z.object({
@@ -133,6 +158,7 @@ export const ModuleGraphBundleSchema = z.object({
   module_quality_report: ModuleQualityReportSchema,
   module_graph_3d: ModuleGraph3DSchema,
   visual_quality_report: VisualQualityReportSchema,
+  module_layout_hints: ModuleLayoutHintsSchema,
 });
 
 export type RepoArchetype = z.infer<typeof RepoArchetypeSchema>;
@@ -142,6 +168,7 @@ export type ModuleRelation = z.infer<typeof ModuleRelationSchema>;
 export type ModuleGraphNode = z.infer<typeof ModuleGraphNodeSchema>;
 export type ModuleGraphEdge = z.infer<typeof ModuleGraphEdgeSchema>;
 export type ModuleGraph = z.infer<typeof ModuleGraphSchema>;
+export type ModuleLayoutHints = z.infer<typeof ModuleLayoutHintsSchema>;
 export type ModuleQualityReport = z.infer<typeof ModuleQualityReportSchema>;
 export type Module3DNode = z.infer<typeof Module3DNodeSchema>;
 export type Module3DEdge = z.infer<typeof Module3DEdgeSchema>;

@@ -87,7 +87,6 @@ export async function GET(
         path: item.path,
         loc: item.loc,
         hotness_score: item.hotness_score,
-        confidence: item.confidence,
       }));
 
     const connectedEdges = moduleGraph.edges
@@ -100,9 +99,7 @@ export async function GET(
       connected_edges: connectedEdges,
       linked_files: fileNodes,
       quality: {
-        confidence: node.confidence,
         evidence_count: node.evidence.length,
-        low_confidence: node.confidence < 0.6,
       },
     });
   } catch (error) {

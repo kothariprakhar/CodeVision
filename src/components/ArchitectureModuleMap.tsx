@@ -5,9 +5,11 @@ import dynamic from 'next/dynamic';
 import type {
   ModuleGraph,
   ModuleGraph3D,
+  ModuleLayoutHints,
   ModuleQualityReport,
   VisualQualityReport,
 } from '@/lib/db';
+import ModuleGraph2DView from './architecture/ModuleGraph2DView';
 
 const ModuleGraph3DView = dynamic(
   () => import('./architecture/ModuleGraph3DView'),
@@ -24,24 +26,15 @@ interface ModuleDrilldown {
     path: string;
     loc: number;
     hotness_score: number;
-    confidence: number;
   }>;
   quality: {
-    confidence: number;
     evidence_count: number;
-    low_confidence: boolean;
   };
 }
 
 interface ArchitectureModuleMapProps {
   projectId: string;
   analysisId: string;
-}
-
-function confidenceText(confidence: number): string {
-  if (confidence >= 0.8) return 'High';
-  if (confidence >= 0.6) return 'Medium';
-  return 'Low';
 }
 
 export default function ArchitectureModuleMap({
@@ -52,15 +45,18 @@ export default function ArchitectureModuleMap({
   const [moduleQuality, setModuleQuality] = useState<ModuleQualityReport | null>(null);
   const [moduleGraph3D, setModuleGraph3D] = useState<ModuleGraph3D | null>(null);
   const [visualQuality, setVisualQuality] = useState<VisualQualityReport | null>(null);
+  const [moduleLayoutHints, setModuleLayoutHints] = useState<ModuleLayoutHints | null>(null);
   const [drilldown, setDrilldown] = useState<ModuleDrilldown | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedModuleNodeId, setSelectedModuleNodeId] = useState<string | null>(null);
+  const [selectedVisualNodeId, setSelectedVisualNodeId] = useState<string | null>(null);
   const [mode, setMode] = useState<'2d' | '3d'>('2d');
   const [labelMode, setLabelMode] = useState<'business' | 'technical'>('business');
   const [groupBy, setGroupBy] = useState<'layer' | 'directory' | 'service'>('layer');
-  const [highConfidenceOnly, setHighConfidenceOnly] = useState(false);
+  const [graph3DLayer, setGraph3DLayer] = useState<'directories' | 'all' | 'hotspots'>('directories');
   const [webglSupported, setWebglSupported] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [graph3DError, setGraph3DError] = useState<string | null>(null);
 
   useEffect(() => {
     const canvas = document.createElement('canvas');
@@ -69,6 +65,12 @@ export default function ArchitectureModuleMap({
     );
     setWebglSupported(supported);
   }, []);
+
+  useEffect(() => {
+    if (mode === '3d' && !webglSupported) {
+      setMode('2d');
+    }
+  }, [mode, webglSupported]);
 
   useEffect(() => {
     if (!analysisId) return;
@@ -91,6 +93,7 @@ export default function ArchitectureModuleMap({
 
         setModuleGraph(graphPayload.module_graph || null);
         setModuleQuality(graphPayload.module_quality_report || null);
+        setModuleLayoutHints(graphPayload.module_layout_hints || null);
         setModuleGraph3D(moduleGraph3DResponse.ok ? (graph3DPayload.module_graph_3d || null) : null);
         setVisualQuality(moduleGraph3DResponse.ok ? (graph3DPayload.visual_quality_report || null) : null);
       } catch (err) {
@@ -104,7 +107,7 @@ export default function ArchitectureModuleMap({
   }, [projectId, analysisId]);
 
   useEffect(() => {
-    if (!selectedNodeId || !analysisId) {
+    if (!selectedModuleNodeId || !analysisId) {
       setDrilldown(null);
       return;
     }
@@ -112,7 +115,7 @@ export default function ArchitectureModuleMap({
     async function fetchDrilldown() {
       try {
         const response = await fetch(
-          `/api/analysis/lenses/${analysisId}/module/${selectedNodeId}?depth=2`
+          `/api/analysis/lenses/${analysisId}/module/${selectedModuleNodeId}?depth=2`
         );
         const payload = await response.json();
         if (!response.ok) {
@@ -125,14 +128,12 @@ export default function ArchitectureModuleMap({
     }
 
     fetchDrilldown();
-  }, [selectedNodeId, analysisId]);
+  }, [selectedModuleNodeId, analysisId]);
 
   const filteredNodes = useMemo(() => {
     if (!moduleGraph) return [];
-    return moduleGraph.nodes
-      .filter(node => !highConfidenceOnly || node.confidence >= 0.6)
-      .sort((a, b) => b.importance_score - a.importance_score);
-  }, [moduleGraph, highConfidenceOnly]);
+    return moduleGraph.nodes.slice().sort((a, b) => b.importance_score - a.importance_score);
+  }, [moduleGraph]);
 
   const groupedNodes = useMemo(() => {
     const groups = new Map<string, typeof filteredNodes>();
@@ -149,9 +150,66 @@ export default function ArchitectureModuleMap({
   }, [filteredNodes, groupBy]);
 
   const selected3DNode = useMemo(
-    () => moduleGraph3D?.nodes.find(node => node.id === selectedNodeId) || null,
-    [moduleGraph3D, selectedNodeId]
+    () => moduleGraph3D?.nodes.find(node => node.id === selectedVisualNodeId) || null,
+    [moduleGraph3D, selectedVisualNodeId]
   );
+
+  const renderGraph3D = useMemo(() => {
+    if (!moduleGraph3D) return null;
+
+    const directoryNodes = moduleGraph3D.nodes.filter(node => node.node_kind === 'directory');
+    const fileNodes = moduleGraph3D.nodes.filter(node => node.node_kind === 'file');
+    const hotspotIds = new Set(moduleLayoutHints?.hotspots || []);
+
+    let selectedNodes = directoryNodes;
+    if (graph3DLayer === 'all') {
+      selectedNodes = [
+        ...directoryNodes,
+        ...fileNodes
+          .slice()
+          .sort((a, b) => b.importance_score - a.importance_score)
+          .slice(0, 220),
+      ];
+    }
+    if (graph3DLayer === 'hotspots') {
+      const hintedHotspotDirectories = directoryNodes.filter(node => hotspotIds.has(node.cluster_id));
+      selectedNodes = [
+        ...hintedHotspotDirectories,
+        ...fileNodes
+          .slice()
+          .sort((a, b) => b.hotness_score - a.hotness_score)
+          .slice(0, 120),
+      ];
+    }
+
+    const selectedNodeIds = new Set(selectedNodes.map(node => node.id));
+    const selectedEdges = moduleGraph3D.edges
+      .filter(edge => selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to))
+      .slice(0, graph3DLayer === 'directories' ? 140 : 380);
+
+    return {
+      nodes: selectedNodes,
+      edges: selectedEdges,
+      hotspotNodeIds: moduleLayoutHints?.hotspots || [],
+    };
+  }, [moduleGraph3D, graph3DLayer, moduleLayoutHints]);
+
+  const handleSelectModuleNode = (nodeId: string) => {
+    setSelectedModuleNodeId(nodeId);
+    setSelectedVisualNodeId(`directory:${nodeId}`);
+  };
+
+  const handleSelectVisualNode = (visualNodeId: string) => {
+    setSelectedVisualNodeId(visualNodeId);
+    if (visualNodeId.startsWith('directory:')) {
+      setSelectedModuleNodeId(visualNodeId.replace('directory:', ''));
+      return;
+    }
+    if (!moduleGraph3D) return;
+    const fileNode = moduleGraph3D.nodes.find(node => node.id === visualNodeId);
+    if (!fileNode) return;
+    setSelectedModuleNodeId(fileNode.cluster_id);
+  };
 
   if (loading) {
     return <div className="text-sm text-gray-400">Loading architecture diagram...</div>;
@@ -206,9 +264,6 @@ export default function ArchitectureModuleMap({
               <span className="rounded-full bg-white/10 px-2 py-1">
                 Coverage {Math.round(moduleQuality.coverage_score * 100)}%
               </span>
-              <span className="rounded-full bg-white/10 px-2 py-1">
-                Low confidence {Math.round(moduleQuality.low_confidence_ratio * 100)}%
-              </span>
               <span className="rounded-full bg-yellow-500/20 px-2 py-1 text-yellow-200">
                 Fallback: {moduleQuality.fallback_mode}
               </span>
@@ -220,6 +275,9 @@ export default function ArchitectureModuleMap({
             </span>
           )}
         </div>
+        {moduleLayoutHints?.narrative ? (
+          <p className="mt-2 text-xs text-gray-400">{moduleLayoutHints.narrative}</p>
+        ) : null}
       </div>
 
       {mode === '2d' && (
@@ -248,18 +306,17 @@ export default function ArchitectureModuleMap({
                 <option value="service">Service Type</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-gray-300">
-              <input
-                type="checkbox"
-                checked={highConfidenceOnly}
-                onChange={e => setHighConfidenceOnly(e.target.checked)}
-              />
-              High confidence only
-            </label>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-[2fr,1fr]">
             <div className="space-y-4">
+              <ModuleGraph2DView
+                graph={moduleGraph}
+                layoutHints={moduleLayoutHints}
+                selectedNodeId={selectedModuleNodeId}
+                onSelectNode={handleSelectModuleNode}
+              />
+
               {groupedNodes.map(([group, nodes]) => (
                 <div key={group} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-indigo-300">{group}</p>
@@ -267,9 +324,9 @@ export default function ArchitectureModuleMap({
                     {nodes.map(node => (
                       <button
                         key={node.id}
-                        onClick={() => setSelectedNodeId(node.id)}
+                        onClick={() => handleSelectModuleNode(node.id)}
                         className={`rounded-lg border p-3 text-left transition-colors ${
-                          selectedNodeId === node.id
+                          selectedModuleNodeId === node.id
                             ? 'border-indigo-400/70 bg-indigo-500/10'
                             : 'border-white/10 bg-black/20 hover:border-indigo-400/40'
                         }`}
@@ -277,9 +334,7 @@ export default function ArchitectureModuleMap({
                         <p className="text-sm font-semibold text-white">
                           {labelMode === 'business' ? node.label : node.id}
                         </p>
-                        <p className="mt-1 text-xs text-gray-300">
-                          {node.module_type} · Confidence {confidenceText(node.confidence)}
-                        </p>
+                        <p className="mt-1 text-xs text-gray-300">{node.module_type}</p>
                         <p className="mt-1 text-[11px] text-gray-500">
                           {node.paths.length} paths · Importance {Math.round(node.importance_score * 100)}%
                         </p>
@@ -320,7 +375,7 @@ export default function ArchitectureModuleMap({
                     </p>
                   </div>
                   <div className="rounded border border-white/10 bg-black/20 p-2 text-gray-300">
-                    Confidence {Math.round(drilldown.quality.confidence * 100)}% · Evidence {drilldown.quality.evidence_count}
+                    Evidence {drilldown.quality.evidence_count}
                   </div>
                   <div>
                     <p className="font-medium text-gray-300">Downstream Modules</p>
@@ -364,22 +419,53 @@ export default function ArchitectureModuleMap({
               WebGL is not available in this environment. Falling back to 2D view.
             </div>
           )}
+
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2 text-xs">
+            <button
+              onClick={() => setGraph3DLayer('directories')}
+              className={`rounded-full px-3 py-1 ${graph3DLayer === 'directories' ? 'bg-indigo-500/30 text-indigo-100' : 'bg-white/10 text-gray-300'}`}
+            >
+              Directories Only
+            </button>
+            <button
+              onClick={() => setGraph3DLayer('hotspots')}
+              className={`rounded-full px-3 py-1 ${graph3DLayer === 'hotspots' ? 'bg-indigo-500/30 text-indigo-100' : 'bg-white/10 text-gray-300'}`}
+            >
+              Hotspots
+            </button>
+            <button
+              onClick={() => setGraph3DLayer('all')}
+              className={`rounded-full px-3 py-1 ${graph3DLayer === 'all' ? 'bg-indigo-500/30 text-indigo-100' : 'bg-white/10 text-gray-300'}`}
+            >
+              Directories + Files
+            </button>
+          </div>
+
           {visualQuality?.notes?.length ? (
             <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-gray-300">
               {visualQuality.notes.join(' ')}
             </div>
           ) : null}
-          {webglSupported && moduleGraph3D ? (
+          {webglSupported && renderGraph3D ? (
             <ModuleGraph3DView
-              graphData={moduleGraph3D}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={(nodeId: string) => setSelectedNodeId(nodeId)}
+              graphData={renderGraph3D}
+              selectedNodeId={selectedVisualNodeId}
+              onSelectNode={(nodeId: string) => handleSelectVisualNode(nodeId)}
+              onRenderError={(message: string) => {
+                setGraph3DError(message);
+                setMode('2d');
+              }}
             />
           ) : (
             <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4 text-sm text-gray-400">
               3D graph unavailable for this analysis version. Use the 2D overview mode.
             </div>
           )}
+          {graph3DError ? (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+              3D renderer fallback triggered: {graph3DError}
+            </div>
+          ) : null}
 
           {selected3DNode && (
             <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-gray-300">

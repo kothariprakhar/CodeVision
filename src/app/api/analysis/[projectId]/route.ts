@@ -66,9 +66,10 @@ export async function GET(
       module_quality_report: analysis.module_quality_report || null,
       module_graph_3d: analysis.module_graph_3d || null,
       visual_quality_report: analysis.visual_quality_report || null,
+      module_layout_hints: analysis.module_layout_hints || null,
       analyzed_at: analysis.analyzed_at,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to fetch analysis' },
       { status: 500 }

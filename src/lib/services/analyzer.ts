@@ -54,7 +54,7 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
       try {
         downloadResult = await cloneRepository(project.github_url, project.github_token, project.id);
         console.log('Git clone fallback successful');
-      } catch (gitError) {
+      } catch {
         console.warn('Git clone fallback failed (expected on serverless environments)');
         console.warn('Original GitHub API error:', downloadResult.error);
         await updateProject(projectId, { status: 'failed' });
@@ -123,6 +123,7 @@ export async function analyzeProject(projectId: string): Promise<AnalyzeProjectR
         module_quality_report: moduleArtifacts.module_quality_report,
         module_graph_3d: moduleArtifacts.module_graph_3d,
         visual_quality_report: moduleArtifacts.visual_quality_report,
+        module_layout_hints: moduleArtifacts.module_layout_hints,
         raw_response: analysisOutput.raw_response,
         branch: gitMetadata?.branch,           // NEW
         commit_hash: gitMetadata?.commitHash,   // NEW
