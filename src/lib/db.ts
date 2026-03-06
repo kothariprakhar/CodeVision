@@ -77,7 +77,6 @@ export interface AnalysisResult {
   module_quality_report?: ModuleQualityReport | null;
   module_graph_3d?: ModuleGraph3D | null;
   visual_quality_report?: VisualQualityReport | null;
-  module_layout_hints?: ModuleLayoutHints | null;
   chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
@@ -300,6 +299,7 @@ export interface ModuleGraphNode {
     | 'unknown';
   paths: string[];
   importance_score: number;
+  confidence: number;
   evidence: EvidenceRef[];
 }
 
@@ -307,6 +307,7 @@ export interface ModuleGraphEdge {
   from: string;
   to: string;
   relation: 'imports' | 'calls' | 'reads' | 'writes' | 'publishes' | 'depends_on';
+  confidence: number;
   evidence: EvidenceRef[];
 }
 
@@ -325,38 +326,9 @@ export interface ModuleGraph {
   edges: ModuleGraphEdge[];
 }
 
-export interface ModuleLayoutLane {
-  id: string;
-  label: string;
-  node_ids: string[];
-}
-
-export interface ModuleLayoutCluster {
-  id: string;
-  label: string;
-  node_ids: string[];
-}
-
-export interface ModuleLayoutFocusPath {
-  from: string;
-  to: string;
-  reason: string;
-}
-
-export interface ModuleLayoutHints {
-  lanes: ModuleLayoutLane[];
-  clusters: ModuleLayoutCluster[];
-  hotspots: string[];
-  focus_paths: ModuleLayoutFocusPath[];
-  render_profile: {
-    preferred_2d: 'layered' | 'radial' | 'clustered';
-    preferred_3d_density: 'compact' | 'balanced' | 'detailed';
-  };
-  narrative: string;
-}
-
 export interface ModuleQualityReport {
   coverage_score: number;
+  low_confidence_ratio: number;
   missing_signals: string[];
   assumptions: string[];
   fallback_mode: 'none' | 'tree_only' | 'manifest_only' | 'llm_only' | 'minimal';
@@ -373,6 +345,7 @@ export interface Module3DNode {
   hotness_score: number;
   importance_score: number;
   dependency_count: number;
+  confidence: number;
   position_seed?: {
     x: number;
     y: number;
@@ -384,6 +357,7 @@ export interface Module3DEdge {
   from: string;
   to: string;
   edge_kind: 'imports' | 'depends_on' | 'calls';
+  confidence: number;
 }
 
 export interface ModuleGraph3D {

@@ -8,7 +8,6 @@ import type {
   JourneyGraph,
   QualityReport,
   ModuleGraph,
-  ModuleLayoutHints,
   ModuleQualityReport,
   ModuleGraph3D,
   VisualQualityReport,
@@ -26,7 +25,6 @@ export interface CreateAnalysisInput {
   module_quality_report?: ModuleQualityReport;
   module_graph_3d?: ModuleGraph3D;
   visual_quality_report?: VisualQualityReport;
-  module_layout_hints?: ModuleLayoutHints;
   raw_response: string;
   branch?: string;
   commit_hash?: string;
@@ -48,7 +46,6 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
       module_quality_report: input.module_quality_report || null,
       module_graph_3d: input.module_graph_3d || null,
       visual_quality_report: input.visual_quality_report || null,
-      module_layout_hints: input.module_layout_hints || null,
       chat_history: [], // JSONB - no stringify needed
       raw_response: input.raw_response,
       branch: input.branch,

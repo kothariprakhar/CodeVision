@@ -8,13 +8,11 @@ import {
   ModuleGraphBundle,
   ModuleGraphBundleSchema,
   ModuleGraphEdge,
-  ModuleLayoutHints,
   ModuleGraphNode,
   ModuleQualityReport,
   RepoArchetype,
   VisualQualityReport,
 } from '../schemas/module-graph';
-import { enrichModuleGraphWithAnthropic } from './module-graph-llm';
 
 interface SourceCodeFile {
   path: string;
@@ -90,15 +88,6 @@ const MANIFEST_FILENAMES = [
 ];
 
 const JS_TS_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
-const MODULE_LAYER_ORDER: ModuleGraphNode['layer'][] = [
-  'presentation',
-  'application',
-  'domain',
-  'data',
-  'infrastructure',
-  'shared',
-  'unknown',
-];
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -180,90 +169,6 @@ function inferModuleLayer(moduleId: string): ModuleGraphNode['layer'] {
   if (lower.includes('infra') || lower.includes('terraform') || lower.includes('docker')) return 'infrastructure';
   if (lower.includes('shared') || lower.includes('common') || lower.includes('lib')) return 'shared';
   return 'unknown';
-}
-
-function summarizeFocusReason(edge: ModuleGraphEdge): string {
-  switch (edge.relation) {
-    case 'calls':
-      return 'Key orchestration path between major modules.';
-    case 'reads':
-    case 'writes':
-      return 'Data-handling interaction between modules.';
-    case 'publishes':
-      return 'Event or notification path between modules.';
-    case 'imports':
-      return 'Direct code dependency with likely coupling.';
-    case 'depends_on':
-    default:
-      return 'Primary dependency path in architecture.';
-  }
-}
-
-function buildDeterministicLayoutHints(moduleGraph: ModuleGraph): ModuleLayoutHints {
-  const nodesById = new Map(moduleGraph.nodes.map(node => [node.id, node]));
-  const lanes = MODULE_LAYER_ORDER
-    .map(layer => ({
-      id: `lane:${layer}`,
-      label: layer.replace('_', ' '),
-      node_ids: moduleGraph.nodes
-        .filter(node => node.layer === layer)
-        .sort((a, b) => b.importance_score - a.importance_score)
-        .map(node => node.id),
-    }))
-    .filter(lane => lane.node_ids.length > 0);
-
-  const clustersByRoot = new Map<string, string[]>();
-  for (const node of moduleGraph.nodes) {
-    const root = node.paths[0]?.split('/')[0] || node.module_type || 'core';
-    const current = clustersByRoot.get(root) || [];
-    current.push(node.id);
-    clustersByRoot.set(root, current);
-  }
-  const clusters = Array.from(clustersByRoot.entries())
-    .slice(0, 10)
-    .map(([root, nodeIds]) => ({
-      id: `cluster:${root}`,
-      label: root,
-      node_ids: nodeIds,
-    }));
-
-  const hotspots = moduleGraph.nodes
-    .slice()
-    .sort((a, b) => b.importance_score - a.importance_score)
-    .slice(0, 5)
-    .map(node => node.id);
-
-  const focus_paths = moduleGraph.edges
-    .slice()
-    .sort((a, b) => {
-      const fromA = nodesById.get(a.from)?.importance_score || 0;
-      const toA = nodesById.get(a.to)?.importance_score || 0;
-      const fromB = nodesById.get(b.from)?.importance_score || 0;
-      const toB = nodesById.get(b.to)?.importance_score || 0;
-      return (fromB + toB) - (fromA + toA);
-    })
-    .slice(0, 8)
-    .map(edge => ({
-      from: edge.from,
-      to: edge.to,
-      reason: summarizeFocusReason(edge),
-    }));
-
-  const uniqueLayers = new Set(moduleGraph.nodes.map(node => node.layer)).size;
-  const preferred2d = uniqueLayers >= 3 ? 'layered' : (clusters.length >= 3 ? 'clustered' : 'radial');
-  const preferred3dDensity = moduleGraph.nodes.length > 10 ? 'balanced' : 'compact';
-
-  return {
-    lanes,
-    clusters,
-    hotspots,
-    focus_paths,
-    render_profile: {
-      preferred_2d: preferred2d,
-      preferred_3d_density: preferred3dDensity,
-    },
-    narrative: `Top architecture modules are organized into ${lanes.length || 1} lanes with ${focus_paths.length} key interaction paths.`,
-  };
 }
 
 function collectManifestSignals(filePaths: string[]): string[] {
@@ -473,6 +378,7 @@ function buildFallbackModuleGraph(projectName?: string): ModuleGraph {
         layer: 'unknown',
         paths: [],
         importance_score: 0.35,
+        confidence: 0.35,
         evidence: [
           {
             source_type: 'inference',
@@ -499,36 +405,11 @@ function buildFallbackModuleGraph3D(): ModuleGraph3D {
         hotness_score: 0.2,
         importance_score: 0.35,
         dependency_count: 0,
+        confidence: 0.35,
         position_seed: { x: 0, y: 0, z: 0 },
       },
     ],
     edges: [],
-  };
-}
-
-function buildFallbackModuleLayoutHints(): ModuleLayoutHints {
-  return {
-    lanes: [
-      {
-        id: 'lane:unknown',
-        label: 'unknown',
-        node_ids: ['fallback-module'],
-      },
-    ],
-    clusters: [
-      {
-        id: 'cluster:repository',
-        label: 'repository',
-        node_ids: ['fallback-module'],
-      },
-    ],
-    hotspots: ['fallback-module'],
-    focus_paths: [],
-    render_profile: {
-      preferred_2d: 'layered',
-      preferred_3d_density: 'compact',
-    },
-    narrative: 'Architecture rendering is in fallback mode due to limited repository signals.',
   };
 }
 
@@ -552,9 +433,9 @@ export async function generateModuleGraphArtifacts(
 
   if (normalizedFiles.length === 0) {
     const moduleGraph = buildFallbackModuleGraph(input.projectName);
-    const moduleLayoutHints = buildFallbackModuleLayoutHints();
     const moduleQualityReport: ModuleQualityReport = {
       coverage_score: 0,
+      low_confidence_ratio: 1,
       missing_signals: ['source_files_missing'],
       assumptions: ['Fallback module output used because no source files were available.'],
       fallback_mode: 'minimal',
@@ -572,7 +453,6 @@ export async function generateModuleGraphArtifacts(
       module_quality_report: moduleQualityReport,
       module_graph_3d: moduleGraph3D,
       visual_quality_report: visualQualityReport,
-      module_layout_hints: moduleLayoutHints,
     });
   }
 
@@ -679,9 +559,17 @@ export async function generateModuleGraphArtifacts(
     .sort((a, b) => b.rawScore - a.rawScore)
     .slice(0, 12);
 
-  const selectedRankedModuleIds = new Set(rankedModules.map(module => module.id));
+  const selectedModuleIds = new Set(rankedModules.map(module => module.id));
   const moduleNodes: ModuleGraphNode[] = rankedModules.map(stats => {
     const importanceScore = clamp(stats.rawScore / maxRawScore, 0.1, 1);
+    const confidence = clamp(
+      0.42
+        + (stats.inDegree + stats.outDegree > 0 ? 0.2 : 0)
+        + (stats.architectureSignals > 0 ? 0.16 : 0)
+        + (stats.evidence.length >= 2 ? 0.12 : 0),
+      0.3,
+      0.95
+    );
 
     return {
       id: stats.id,
@@ -690,18 +578,21 @@ export async function generateModuleGraphArtifacts(
       layer: inferModuleLayer(stats.id),
       paths: Array.from(stats.paths).slice(0, 20),
       importance_score: importanceScore,
+      confidence,
       evidence: stats.evidence.slice(0, 6),
     };
   });
 
   const moduleEdges: ModuleGraphEdge[] = Array.from(moduleEdgeWeights.values())
-    .filter(edge => selectedRankedModuleIds.has(edge.from) && selectedRankedModuleIds.has(edge.to))
+    .filter(edge => selectedModuleIds.has(edge.from) && selectedModuleIds.has(edge.to))
     .map(edge => {
       const relation = Object.entries(edge.counts).sort((a, b) => b[1] - a[1])[0]?.[0] as ModuleGraphEdge['relation'];
+      const weight = Object.values(edge.counts).reduce((sum, count) => sum + count, 0);
       return {
         from: edge.from,
         to: edge.to,
         relation: relation || 'depends_on',
+        confidence: clamp(0.5 + Math.log1p(weight) * 0.15 + (edge.architectureSignals > 0 ? 0.08 : 0), 0.45, 0.95),
         evidence: Array.from(edge.files).slice(0, 3).map(file => ({
           source_type: file.startsWith('architecture:') ? 'inference' as const : 'file' as const,
           ref: file,
@@ -711,7 +602,7 @@ export async function generateModuleGraphArtifacts(
         })),
       };
     })
-    .sort((a, b) => b.evidence.length - a.evidence.length)
+    .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 40);
 
   const manifestSignals = collectManifestSignals(normalizedFiles.map(file => file.path));
@@ -724,8 +615,11 @@ export async function generateModuleGraphArtifacts(
   })();
 
   const coveredPaths = new Set(moduleNodes.flatMap(node => node.paths));
-  let moduleQualityReport: ModuleQualityReport = {
+  const moduleQualityReport: ModuleQualityReport = {
     coverage_score: clamp(coveredPaths.size / normalizedFiles.length, 0, 1),
+    low_confidence_ratio: moduleNodes.length > 0
+      ? clamp(moduleNodes.filter(node => node.confidence < 0.6).length / moduleNodes.length, 0, 1)
+      : 1,
     missing_signals: [
       ...(manifestSignals.length === 0 ? ['manifest_signals_missing'] : []),
       ...(moduleEdges.length === 0 ? ['dependency_edges_missing'] : []),
@@ -747,27 +641,8 @@ export async function generateModuleGraphArtifacts(
     }
     : buildFallbackModuleGraph(input.projectName);
 
-  const deterministicLayoutHints = buildDeterministicLayoutHints(moduleGraph);
-  const enrichedArtifacts = await enrichModuleGraphWithAnthropic({
-    moduleGraph,
-    deterministicLayoutHints,
-    moduleQualityReport,
-  });
-  const moduleGraphFinal = enrichedArtifacts.moduleGraph;
-  const moduleLayoutHints = enrichedArtifacts.moduleLayoutHints;
-  if (enrichedArtifacts.llmNotes.length > 0) {
-    moduleQualityReport = {
-      ...moduleQualityReport,
-      assumptions: [...moduleQualityReport.assumptions, ...enrichedArtifacts.llmNotes],
-    };
-  }
-
-  const moduleGraphNodesFinal = moduleGraphFinal.nodes;
-  const moduleGraphEdgesFinal = moduleGraphFinal.edges;
-  const selectedModuleIds = new Set(moduleGraphNodesFinal.map(node => node.id));
-
-  const directoryNodes = moduleGraphNodesFinal.map((node, index) => {
-    const angle = (index / Math.max(1, moduleGraphNodesFinal.length)) * Math.PI * 2;
+  const directoryNodes = moduleNodes.map((node, index) => {
+    const angle = (index / Math.max(1, moduleNodes.length)) * Math.PI * 2;
     const radius = 12;
     return {
       id: `directory:${node.id}`,
@@ -778,7 +653,8 @@ export async function generateModuleGraphArtifacts(
       loc: node.paths.length,
       hotness_score: 0.35,
       importance_score: node.importance_score,
-      dependency_count: moduleGraphEdgesFinal.filter(edge => edge.from === node.id || edge.to === node.id).length,
+      dependency_count: moduleEdges.filter(edge => edge.from === node.id || edge.to === node.id).length,
+      confidence: node.confidence,
       position_seed: {
         x: Math.cos(angle) * radius,
         y: 0,
@@ -835,6 +711,7 @@ export async function generateModuleGraphArtifacts(
       hotness_score: hotnessScore,
       importance_score: clamp(Math.log1p(file.loc) / Math.log(120), 0.08, 1),
       dependency_count: fileDependencyCount.get(file.path) || 0,
+      confidence: clamp(0.45 + (fileDependencyCount.get(file.path) ? 0.2 : 0) + (recency ? 0.1 : 0), 0.35, 0.9),
       position_seed: {
         x: clusterX + Math.cos(jitterAngle) * jitterRadius,
         y: ((clusterSeed % 7) - 3) * 0.25,
@@ -851,12 +728,14 @@ export async function generateModuleGraphArtifacts(
       from: `file:${edge.from}`,
       to: `file:${edge.to}`,
       edge_kind: 'imports' as const,
+      confidence: 0.65,
     }));
 
-  const directoryEdges = moduleGraphEdgesFinal.map(edge => ({
+  const directoryEdges = moduleEdges.map(edge => ({
     from: `directory:${edge.from}`,
     to: `directory:${edge.to}`,
     edge_kind: edge.relation === 'calls' ? 'calls' as const : 'depends_on' as const,
+    confidence: edge.confidence,
   }));
 
   const moduleGraph3D: ModuleGraph3D = (directoryNodes.length + fileNodes.length) > 0
@@ -897,10 +776,9 @@ export async function generateModuleGraphArtifacts(
   };
 
   return ModuleGraphBundleSchema.parse({
-    module_graph: moduleGraphFinal,
+    module_graph: moduleGraph,
     module_quality_report: moduleQualityReport,
     module_graph_3d: moduleGraph3D,
     visual_quality_report: visualQualityReport,
-    module_layout_hints: moduleLayoutHints,
   });
 }

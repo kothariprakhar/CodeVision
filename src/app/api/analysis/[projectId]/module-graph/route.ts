@@ -2,85 +2,45 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProjectAnalysis, getAnalysisById } from '@/lib/repositories/analysis';
 import { getProject } from '@/lib/repositories/projects';
 import { getUserFromRequest } from '@/lib/auth';
-import type { ModuleGraph, ModuleLayoutHints, ModuleQualityReport } from '@/lib/db';
-
-function buildLayoutHintsFromModuleGraph(moduleGraph: ModuleGraph): ModuleLayoutHints {
-  const lanes = ['presentation', 'application', 'domain', 'data', 'infrastructure', 'shared', 'unknown']
-    .map(layer => ({
-      id: `lane:${layer}`,
-      label: layer,
-      node_ids: moduleGraph.nodes
-        .filter(node => node.layer === layer)
-        .map(node => node.id),
-    }))
-    .filter(lane => lane.node_ids.length > 0);
-
-  const rootClusters = new Map<string, string[]>();
-  moduleGraph.nodes.forEach(node => {
-    const root = node.paths[0]?.split('/')[0] || node.module_type || 'core';
-    const values = rootClusters.get(root) || [];
-    values.push(node.id);
-    rootClusters.set(root, values);
-  });
-
-  return {
-    lanes,
-    clusters: Array.from(rootClusters.entries()).slice(0, 10).map(([root, nodeIds]) => ({
-      id: `cluster:${root}`,
-      label: root,
-      node_ids: nodeIds,
-    })),
-    hotspots: moduleGraph.nodes.slice().sort((a, b) => b.importance_score - a.importance_score).slice(0, 5).map(node => node.id),
-    focus_paths: moduleGraph.edges.slice(0, 8).map(edge => ({
-      from: edge.from,
-      to: edge.to,
-      reason: `Primary ${edge.relation} relationship`,
-    })),
-    render_profile: {
-      preferred_2d: 'layered',
-      preferred_3d_density: moduleGraph.nodes.length > 10 ? 'balanced' : 'compact',
-    },
-    narrative: 'Layout hints were generated deterministically from available module metadata.',
-  };
-}
+import type { ModuleGraph, ModuleQualityReport } from '@/lib/db';
 
 function buildFallbackModuleGraphFromArchitecture(
   architecture: { nodes: Array<{ id: string; name: string; type: string; files?: string[] }>; edges: Array<{ from: string; to: string; type: string }> } | null | undefined,
   projectName: string
-): { moduleGraph: ModuleGraph; qualityReport: ModuleQualityReport; layoutHints: ModuleLayoutHints } {
+): { moduleGraph: ModuleGraph; qualityReport: ModuleQualityReport } {
   const architectureNodes = architecture?.nodes || [];
   if (architectureNodes.length === 0) {
-    const fallbackGraph: ModuleGraph = {
-      root_summary: `Architecture diagram fallback for ${projectName}; no module graph artifact is available yet.`,
-      repo_archetype: 'unknown',
-      nodes: [
-        {
-          id: 'fallback',
-          label: 'Unclassified Module',
-          module_type: 'unknown',
-          layer: 'unknown',
-          paths: [],
-          importance_score: 0.35,
-          evidence: [
-            {
-              source_type: 'inference',
-              ref: 'fallback',
-              snippet: 'Module graph was not generated for this analysis version.',
-            },
-          ],
-        },
-      ],
-      edges: [],
-    };
     return {
-      moduleGraph: fallbackGraph,
+      moduleGraph: {
+        root_summary: `Architecture diagram fallback for ${projectName}; no module graph artifact is available yet.`,
+        repo_archetype: 'unknown',
+        nodes: [
+          {
+            id: 'fallback',
+            label: 'Unclassified Module',
+            module_type: 'unknown',
+            layer: 'unknown',
+            paths: [],
+            importance_score: 0.35,
+            confidence: 0.35,
+            evidence: [
+              {
+                source_type: 'inference',
+                ref: 'fallback',
+                snippet: 'Module graph was not generated for this analysis version.',
+              },
+            ],
+          },
+        ],
+        edges: [],
+      },
       qualityReport: {
         coverage_score: 0.2,
+        low_confidence_ratio: 1,
         missing_signals: ['module_graph_not_generated'],
         assumptions: ['This fallback is derived from sparse architecture metadata only.'],
         fallback_mode: 'minimal',
       },
-      layoutHints: buildLayoutHintsFromModuleGraph(fallbackGraph),
     };
   }
 
@@ -91,6 +51,7 @@ function buildFallbackModuleGraphFromArchitecture(
     layer: 'unknown',
     paths: (node.files || []).slice(0, 12),
     importance_score: 0.55,
+    confidence: 0.5,
     evidence: [
       {
         source_type: 'inference',
@@ -110,6 +71,7 @@ function buildFallbackModuleGraphFromArchitecture(
       from,
       to,
       relation: edge.type === 'calls' ? 'calls' : 'depends_on',
+      confidence: 0.45,
       evidence: [
         {
           source_type: 'inference',
@@ -129,16 +91,11 @@ function buildFallbackModuleGraphFromArchitecture(
     },
     qualityReport: {
       coverage_score: 0.45,
+      low_confidence_ratio: 0.8,
       missing_signals: ['module_graph_not_generated'],
       assumptions: ['This fallback is derived from architecture metadata and may omit true module boundaries.'],
       fallback_mode: 'tree_only',
     },
-    layoutHints: buildLayoutHintsFromModuleGraph({
-      root_summary: `${projectName} architecture diagram is in fallback mode using existing architecture metadata.`,
-      repo_archetype: 'unknown',
-      nodes,
-      edges,
-    }),
   };
 }
 
@@ -172,13 +129,11 @@ export async function GET(
     }
 
     if (analysis.module_graph && analysis.module_quality_report) {
-      const moduleLayoutHints = analysis.module_layout_hints || buildLayoutHintsFromModuleGraph(analysis.module_graph);
       return NextResponse.json({
         analysis_id: analysis.id,
         project_id: projectId,
         module_graph: analysis.module_graph,
         module_quality_report: analysis.module_quality_report,
-        module_layout_hints: moduleLayoutHints,
         analyzed_at: analysis.analyzed_at,
       });
     }
@@ -193,7 +148,6 @@ export async function GET(
       project_id: projectId,
       module_graph: fallback.moduleGraph,
       module_quality_report: fallback.qualityReport,
-      module_layout_hints: fallback.layoutHints,
       analyzed_at: analysis.analyzed_at,
     });
   } catch (error) {

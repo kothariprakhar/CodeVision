@@ -18,6 +18,7 @@ function buildFallback3D(projectName: string): { moduleGraph3D: ModuleGraph3D; v
           hotness_score: 0.2,
           importance_score: 0.35,
           dependency_count: 0,
+          confidence: 0.35,
           position_seed: { x: 0, y: 0, z: 0 },
         },
       ],
