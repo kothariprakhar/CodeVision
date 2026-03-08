@@ -26,6 +26,18 @@ interface BusinessFlowViewProps {
   flows: BusinessFlow[];
   onStepSelect?: (moduleId: string) => void;
   founderMode?: boolean;
+  problemStatement?: string;
+  valueFeatures?: Array<{
+    name: string;
+    description: string;
+    business_impact: string;
+    modules_involved: string[];
+  }>;
+  narrativeComponents?: Array<{
+    name: string;
+    explanation: string;
+    business_analogy: string;
+  }>;
   founderJourneyRewrites?: Record<string, {
     name: string;
     goal: string;
@@ -63,6 +75,9 @@ export default function BusinessFlowView({
   flows,
   onStepSelect,
   founderMode = false,
+  problemStatement,
+  valueFeatures,
+  narrativeComponents,
   founderJourneyRewrites,
 }: BusinessFlowViewProps) {
   const [selectedFlowIdState, setSelectedFlowIdState] = useState<string | null>(null);
@@ -135,6 +150,15 @@ export default function BusinessFlowView({
 
   return (
     <div className="space-y-4">
+      {problemStatement && (
+        <section className="rounded-2xl border border-indigo-400/25 bg-indigo-500/10 p-4">
+          <div className="text-xs uppercase tracking-wide text-indigo-200">Core Business Problem</div>
+          <p className="mt-2 text-sm leading-relaxed text-indigo-100">
+            {simplifyForFounder(problemStatement, founderMode)}
+          </p>
+        </section>
+      )}
+
       <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
         <div className="flex flex-wrap items-center gap-2">
           {flows.map(flow => (
@@ -249,6 +273,53 @@ export default function BusinessFlowView({
             </div>
           </div>
         </div>
+      )}
+
+      {valueFeatures && valueFeatures.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">Value Delivered</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {valueFeatures.slice(0, 6).map(feature => (
+              <article key={feature.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <h4 className="text-sm font-semibold text-indigo-200">{feature.name}</h4>
+                <p className="mt-1 text-xs text-gray-300">
+                  {simplifyForFounder(feature.description, founderMode)}
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Impact: {simplifyForFounder(feature.business_impact, founderMode)}
+                </p>
+                {feature.modules_involved.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {feature.modules_involved.slice(0, 4).map(module => (
+                      <span key={`${feature.name}-${module}`} className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-gray-300">
+                        {module}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {narrativeComponents && narrativeComponents.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">System Components</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {narrativeComponents.slice(0, 8).map(component => (
+              <article key={component.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <h4 className="text-sm font-semibold text-white">{component.name}</h4>
+                <p className="mt-1 text-xs text-gray-300">
+                  {simplifyForFounder(component.explanation, founderMode)}
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Analogy: {simplifyForFounder(component.business_analogy, founderMode)}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );

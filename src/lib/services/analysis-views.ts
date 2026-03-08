@@ -18,6 +18,8 @@ export interface DiagramEdgeView {
   target: string;
   type: 'data_flow' | 'reads_from' | 'triggers';
   label: string;
+  data_flow?: string;
+  trigger?: string;
 }
 
 export interface BusinessFlow {
@@ -85,14 +87,16 @@ export function buildDiagramView(analysis: AnalysisResult): { nodes: DiagramNode
     .map(edge => ({
       source: edge.from,
       target: edge.to,
-      type: mapEdgeType(edge.type, edge.type),
-      label: edge.type === 'stores'
+      type: mapEdgeType(edge.type, edge.label || edge.type),
+      label: edge.label || (edge.type === 'stores'
         ? 'reads/writes data'
         : edge.type === 'calls'
           ? 'triggers action'
           : edge.type === 'renders'
             ? 'renders view'
-            : 'sends data to',
+            : 'sends data to'),
+      data_flow: edge.data_flow,
+      trigger: edge.trigger,
     }));
 
   return { nodes, edges };
@@ -162,6 +166,19 @@ export function buildTechStackView(analysis: AnalysisResult): {
   primary_technologies: string[];
   module_technologies: Array<{ module: string; technologies: string[] }>;
   inferred_platforms: string[];
+  technology_choices: string[];
+  data_usage: Array<{
+    data_type: string;
+    collected_from: string;
+    used_for: string;
+    stored_in: string;
+  }>;
+  external_deps: Array<{
+    name: string;
+    why_needed: string;
+    what_breaks_without_it: string;
+  }>;
+  scale_assessment: string | null;
 } {
   const snapshot = buildTechStackSnapshot(analysis);
 
@@ -212,6 +229,14 @@ export function buildTechStackView(analysis: AnalysisResult): {
     primary_technologies: primary,
     module_technologies: moduleTech.slice(0, 40),
     inferred_platforms: inferredPlatforms,
+    technology_choices: analysis.business_context?.founder_narrative?.technology_choices
+      || analysis.business_context?.technical_narrative?.technology_choices
+      || [],
+    data_usage: analysis.business_context?.data_usage || [],
+    external_deps: analysis.business_context?.external_deps || [],
+    scale_assessment: analysis.business_context?.founder_narrative?.scale_assessment
+      || analysis.business_context?.technical_narrative?.scale_assessment
+      || null,
   };
 }
 

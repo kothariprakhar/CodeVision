@@ -46,13 +46,29 @@ interface ArchitectureVisualization {
     type: 'component' | 'service' | 'api' | 'database' | 'external' | 'ui';
     complexity: 'low' | 'medium' | 'high';
     description: string;
+    business_role?: string;
     files: string[];
   }>;
   edges: Array<{
     from: string;
     to: string;
     type: 'imports' | 'calls' | 'stores' | 'renders';
+    label?: string;
+    data_flow?: string;
+    trigger?: string;
   }>;
+}
+
+interface NarrativeMode {
+  executive_summary: string;
+  how_it_works: string;
+  components: Array<{
+    name: string;
+    explanation: string;
+    business_analogy: string;
+  }>;
+  scale_assessment: string;
+  technology_choices: string[];
 }
 
 interface Analysis {
@@ -78,6 +94,28 @@ interface Analysis {
     stars?: number;
     primary_language?: string | null;
     contributors_count?: number;
+  } | null;
+  business_context?: {
+    problem_statement: string;
+    value_features: Array<{
+      name: string;
+      description: string;
+      business_impact: string;
+      modules_involved: string[];
+    }>;
+    data_usage: Array<{
+      data_type: string;
+      collected_from: string;
+      used_for: string;
+      stored_in: string;
+    }>;
+    external_deps: Array<{
+      name: string;
+      why_needed: string;
+      what_breaks_without_it: string;
+    }>;
+    founder_narrative: NarrativeMode;
+    technical_narrative: NarrativeMode;
   } | null;
   analyzed_at: string;
 }
@@ -495,6 +533,9 @@ export default function ProjectDetail() {
   const repoLanguage = analysis?.repo_metadata?.primary_language || 'Not detected';
   const repoContributors = analysis?.repo_metadata?.contributors_count;
   const hasFounderContent = Boolean(analysis?.founder_content);
+  const activeNarrative = founderMode
+    ? analysis?.business_context?.founder_narrative
+    : analysis?.business_context?.technical_narrative;
 
   if (loading) {
     return <div className="text-center py-12 text-gray-400">Loading project...</div>;
@@ -533,6 +574,19 @@ export default function ProjectDetail() {
               </svg>
               <span className="truncate max-w-md">{project.github_url}</span>
             </div>
+            {(activeNarrative?.executive_summary || analysis?.summary) && (
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-300">
+                {activeNarrative?.executive_summary || analysis?.summary}
+              </p>
+            )}
+            {activeNarrative?.how_it_works && (
+              <details className="mt-3 max-w-3xl rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  How It Works
+                </summary>
+                <p className="mt-2 leading-relaxed">{activeNarrative.how_it_works}</p>
+              </details>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex flex-col items-end">
@@ -732,6 +786,9 @@ export default function ProjectDetail() {
                   analysisId={selectedVersion}
                   founderMode={founderMode}
                   founderJourneyRewrites={analysis.founder_content?.journey_rewrites}
+                  problemStatement={analysis.business_context?.problem_statement}
+                  valueFeatures={analysis.business_context?.value_features}
+                  narrativeComponents={activeNarrative?.components}
                   onSelectModule={(moduleId) => {
                     setHighlightedModuleId(moduleId);
                     setActiveTab('architecture');
@@ -751,7 +808,14 @@ export default function ProjectDetail() {
           {activeTab === 'techstack' && (
             <>
               {analysis && selectedVersion ? (
-                <TechStackDashboard analysisId={selectedVersion} founderMode={founderMode} />
+                <TechStackDashboard
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  dataUsage={analysis.business_context?.data_usage}
+                  externalDeps={analysis.business_context?.external_deps}
+                  scaleAssessment={activeNarrative?.scale_assessment}
+                  technologyChoices={activeNarrative?.technology_choices}
+                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
                   <p className="font-medium text-gray-400">No tech stack analysis yet</p>

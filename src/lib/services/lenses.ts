@@ -30,11 +30,47 @@ interface CapabilityDomain {
   description: string;
 }
 
-interface LensGenerationInput {
+interface StructuredJourneyStep {
+  action: string;
+  description: string;
+  module_name: string;
+}
+
+interface StructuredJourney {
+  title: string;
+  persona: string;
+  goal: string;
+  steps: StructuredJourneyStep[];
+}
+
+interface StructuredPass3Output {
+  problem_statement: string;
+  user_journeys: StructuredJourney[];
+  value_features: Array<{
+    name: string;
+    description: string;
+    business_impact: string;
+    modules_involved: string[];
+  }>;
+  data_usage: Array<{
+    data_type: string;
+    collected_from: string;
+    used_for: string;
+    stored_in: string;
+  }>;
+  external_deps: Array<{
+    name: string;
+    why_needed: string;
+    what_breaks_without_it: string;
+  }>;
+}
+
+export interface LensGenerationInput {
   architecture: ArchitectureVisualization | null | undefined;
   findings: Finding[];
   documents?: ParsedDocument[];
   projectName?: string;
+  pass3?: StructuredPass3Output;
 }
 
 interface NodeCapabilityMatch {
@@ -569,7 +605,127 @@ function createJourneyStep(
   };
 }
 
-function buildJourneyGraph(
+function normalizeNodeKey(value: string): string {
+  return value.toLowerCase().trim();
+}
+
+function buildJourneyGraphFromAI(
+  pass3Journeys: StructuredJourney[],
+  architecture: ArchitectureVisualization | null | undefined,
+  findings: Finding[],
+  fallbackCapabilityGraph: CapabilityGraph
+): JourneyGraph {
+  const architectureNodes = architecture?.nodes || [];
+  const architectureEdges = architecture?.edges || [];
+  if (pass3Journeys.length === 0 || architectureNodes.length === 0) {
+    return buildDeterministicJourneyGraph(fallbackCapabilityGraph, findings);
+  }
+
+  const nodeById = new Map(architectureNodes.map(node => [node.id, node]));
+  const nodeByName = new Map(
+    architectureNodes.map(node => [normalizeNodeKey(node.name), node])
+  );
+  const edgeSet = new Set<string>();
+  architectureEdges.forEach(edge => {
+    edgeSet.add(`${edge.from}→${edge.to}`);
+    edgeSet.add(`${edge.to}→${edge.from}`);
+  });
+
+  const resolveNode = (name: string): ArchitectureNode | null => {
+    return (
+      nodeById.get(name)
+      || nodeByName.get(normalizeNodeKey(name))
+      || null
+    );
+  };
+
+  const journeys: Journey[] = [];
+  let droppedForValidation = 0;
+
+  pass3Journeys.forEach((journey, journeyIndex) => {
+    const resolved = journey.steps
+      .map(step => ({ ...step, node: resolveNode(step.module_name) }))
+      .filter(step => step.node !== null);
+
+    if (resolved.length < 2) return;
+
+    let valid = 0;
+    let total = 0;
+    for (let i = 0; i < resolved.length - 1; i += 1) {
+      total += 1;
+      if (edgeSet.has(`${resolved[i].node!.id}→${resolved[i + 1].node!.id}`)) {
+        valid += 1;
+      }
+    }
+
+    if (total > 0 && valid / total < 0.25) {
+      droppedForValidation += 1;
+      return;
+    }
+
+    const journeyId = `journey-ai-${journeyIndex + 1}`;
+    const steps: JourneyStep[] = resolved.map((step, stepIndex) => {
+      const node = step.node as ArchitectureNode;
+      const isFirst = stepIndex === 0;
+      const isLast = stepIndex === resolved.length - 1;
+      const stepType: JourneyStep['step_type'] = isFirst
+        ? 'entry'
+        : isLast
+          ? 'exit'
+          : 'action';
+      const frictionRisk = buildStepRisk(findings, [
+        journey.title.toLowerCase(),
+        step.action.toLowerCase(),
+        step.module_name.toLowerCase(),
+        node.name.toLowerCase(),
+      ]);
+
+      return {
+        id: `${journeyId}-step-${stepIndex + 1}`,
+        journey_id: journeyId,
+        order: stepIndex + 1,
+        name: step.action,
+        step_type: stepType,
+        description: step.description,
+        business_outcome: isLast
+          ? `Completes journey goal: ${journey.goal}`
+          : `Progresses user toward: ${journey.goal}`,
+        friction_risk: frictionRisk,
+        dropoff_likelihood: frictionRisk === 'critical'
+          ? 0.65
+          : frictionRisk === 'high'
+            ? 0.48
+            : frictionRisk === 'medium'
+              ? 0.3
+              : 0.14,
+        systems_touched: [node.id],
+        confidence: clamp(0.55 + (total > 0 ? valid / total : 0) * 0.35, 0.5, 0.92),
+        evidence: buildNodeEvidence(node).slice(0, 4),
+        risks: [],
+      };
+    });
+
+    journeys.push({
+      id: journeyId,
+      name: journey.title,
+      persona: journey.persona,
+      goal: journey.goal,
+      kpi: `${journey.title} completion rate`,
+      steps,
+    });
+  });
+
+  if (journeys.length === 0) {
+    return buildDeterministicJourneyGraph(fallbackCapabilityGraph, findings);
+  }
+
+  const summary = droppedForValidation > 0
+    ? `${journeys.length} validated flows generated from AI journey extraction (${droppedForValidation} low-consistency flows dropped).`
+    : `${journeys.length} validated flows generated from AI journey extraction.`;
+  return { summary, journeys };
+}
+
+function buildDeterministicJourneyGraph(
   capabilityGraph: CapabilityGraph,
   findings: Finding[]
 ): JourneyGraph {
@@ -833,7 +989,12 @@ export function generateBusinessLensArtifacts(input: LensGenerationInput): LensB
     input.findings,
     input.projectName
   );
-  const journeyGraph = buildJourneyGraph(capabilityGraph, input.findings);
+  const journeyGraph = buildJourneyGraphFromAI(
+    input.pass3?.user_journeys || [],
+    input.architecture,
+    input.findings,
+    capabilityGraph
+  );
   const qualityReport = buildQualityReport(
     input.architecture,
     capabilityGraph,

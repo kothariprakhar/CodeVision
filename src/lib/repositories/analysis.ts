@@ -8,6 +8,7 @@ import type {
   JourneyGraph,
   QualityReport,
   FounderContent,
+  BusinessContext,
 } from '../db';
 
 export interface CreateAnalysisInput {
@@ -19,6 +20,7 @@ export interface CreateAnalysisInput {
   journey_graph?: JourneyGraph;
   quality_report?: QualityReport;
   founder_content?: FounderContent;
+  business_context?: BusinessContext;
   raw_response: string;
   branch?: string;
   commit_hash?: string;
@@ -35,6 +37,7 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
     journey_graph: input.journey_graph || null,
     quality_report: input.quality_report || null,
     founder_content: input.founder_content || null,
+    business_context: input.business_context || null,
     chat_history: [],
     raw_response: input.raw_response,
     branch: input.branch,

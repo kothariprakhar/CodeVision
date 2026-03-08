@@ -8,6 +8,7 @@ import { generateBusinessLensArtifacts } from './lenses';
 import { cloneRepo, cleanupClone, fetchRepoMetadata } from './repo-ingestion';
 import { buildFileManifest, groupByModule, prioritizeFiles, INCLUDED_EXTENSIONS_LIST } from './chunker-service';
 import { runFullAnalysis } from './analysis-service';
+import type { FullAnalysis } from './analysis-service';
 import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
 import {
   buildStructuralAnalysisContext,
@@ -281,6 +282,7 @@ export async function analyzeProject(
       founder_content?: FounderContent | null;
       raw_response: string;
     };
+    let fullAnalysisResult: FullAnalysis | null = null;
     try {
       assertNotCancelled();
       const fullAnalysis = await runFullAnalysis({
@@ -297,6 +299,7 @@ export async function analyzeProject(
       }, project.id, {
         onProgress: (event) => emit(event.stage, event.progress, event.message),
       });
+      fullAnalysisResult = fullAnalysis;
 
       analysisOutput = {
         summary: fullAnalysis.summary,
@@ -338,7 +341,19 @@ export async function analyzeProject(
       findings: analysisOutput.findings,
       documents: parsedDocs,
       projectName: project.name,
+      pass3: fullAnalysisResult?.business_analysis,
     });
+
+    const businessContext = fullAnalysisResult
+      ? {
+        problem_statement: fullAnalysisResult.business_analysis.problem_statement,
+        value_features: fullAnalysisResult.business_analysis.value_features,
+        data_usage: fullAnalysisResult.business_analysis.data_usage,
+        external_deps: fullAnalysisResult.business_analysis.external_deps,
+        founder_narrative: fullAnalysisResult.architecture_narrative.founder_mode,
+        technical_narrative: fullAnalysisResult.architecture_narrative.technical_lite,
+      }
+      : undefined;
 
     // Save results with git metadata
     const result = await createAnalysisResult({
@@ -350,6 +365,7 @@ export async function analyzeProject(
       journey_graph: lensArtifacts.journey_graph,
       quality_report: lensArtifacts.quality_report,
       founder_content: analysisOutput.founder_content || undefined,
+      business_context: businessContext,
       raw_response: analysisOutput.raw_response,
       branch: gitMetadata?.branch,
       commit_hash: gitMetadata?.commitHash,

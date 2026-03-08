@@ -39,6 +39,19 @@ interface TechStackResponse {
 interface TechStackDashboardProps {
   analysisId: string;
   founderMode?: boolean;
+  technologyChoices?: string[];
+  scaleAssessment?: string;
+  dataUsage?: Array<{
+    data_type: string;
+    collected_from: string;
+    used_for: string;
+    stored_in: string;
+  }>;
+  externalDeps?: Array<{
+    name: string;
+    why_needed: string;
+    what_breaks_without_it: string;
+  }>;
 }
 
 const LANGUAGE_COLORS = ['#6EA8FE', '#47D7AC', '#F9C74F', '#C084FC', '#FB7185', '#94A3B8'];
@@ -62,7 +75,14 @@ function describeArc(cx: number, cy: number, radius: number, startAngle: number,
   return ['M', start.x, start.y, 'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(' ');
 }
 
-export default function TechStackDashboard({ analysisId, founderMode = false }: TechStackDashboardProps) {
+export default function TechStackDashboard({
+  analysisId,
+  founderMode = false,
+  technologyChoices,
+  scaleAssessment,
+  dataUsage,
+  externalDeps,
+}: TechStackDashboardProps) {
   const [data, setData] = useState<TechStackResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -128,6 +148,11 @@ export default function TechStackDashboard({ analysisId, founderMode = false }: 
             </span>
             <p className="text-sm text-gray-300">{simplifyForFounder(data.architecture_pattern.explanation, founderMode)}</p>
           </div>
+          {scaleAssessment && (
+            <div className="mt-3 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+              Scale & Reliability: {simplifyForFounder(scaleAssessment, founderMode)}
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
@@ -240,6 +265,66 @@ export default function TechStackDashboard({ analysisId, founderMode = false }: 
           ))}
         </div>
       </section>
+
+      {technologyChoices && technologyChoices.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">Why These Technologies</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {technologyChoices.slice(0, 16).map(choice => (
+              <span key={choice} className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-gray-200">
+                {simplifyForFounder(choice, founderMode)}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {dataUsage && dataUsage.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">Data Architecture</h3>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full text-left text-xs text-gray-300">
+              <thead className="text-gray-400">
+                <tr>
+                  <th className="py-2 pr-3">Data Type</th>
+                  <th className="py-2 pr-3">Collected From</th>
+                  <th className="py-2 pr-3">Used For</th>
+                  <th className="py-2">Stored In</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataUsage.slice(0, 12).map((item, index) => (
+                  <tr key={`${item.data_type}-${index}`} className="border-t border-white/10 align-top">
+                    <td className="py-2 pr-3 text-white">{item.data_type}</td>
+                    <td className="py-2 pr-3">{simplifyForFounder(item.collected_from, founderMode)}</td>
+                    <td className="py-2 pr-3">{simplifyForFounder(item.used_for, founderMode)}</td>
+                    <td className="py-2">{simplifyForFounder(item.stored_in || 'Not specified', founderMode)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {externalDeps && externalDeps.length > 0 && (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">External Services (Business Impact)</h3>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {externalDeps.slice(0, 8).map(dep => (
+              <article key={dep.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <h4 className="text-sm font-semibold text-indigo-200">{dep.name}</h4>
+                <p className="mt-1 text-xs text-gray-300">
+                  Why needed: {simplifyForFounder(dep.why_needed, founderMode)}
+                </p>
+                <p className="mt-2 text-xs text-gray-400">
+                  Without it: {simplifyForFounder(dep.what_breaks_without_it, founderMode)}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

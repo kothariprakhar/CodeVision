@@ -8,6 +8,18 @@ interface JourneyMapProps {
   analysisId: string;
   onSelectModule?: (moduleId: string) => void;
   founderMode?: boolean;
+  problemStatement?: string;
+  valueFeatures?: Array<{
+    name: string;
+    description: string;
+    business_impact: string;
+    modules_involved: string[];
+  }>;
+  narrativeComponents?: Array<{
+    name: string;
+    explanation: string;
+    business_analogy: string;
+  }>;
   founderJourneyRewrites?: Record<string, {
     name: string;
     goal: string;
@@ -19,6 +31,9 @@ export default function JourneyMap({
   analysisId,
   onSelectModule,
   founderMode = false,
+  problemStatement,
+  valueFeatures,
+  narrativeComponents,
   founderJourneyRewrites,
 }: JourneyMapProps) {
   const [flows, setFlows] = useState<BusinessFlow[]>([]);
@@ -65,6 +80,9 @@ export default function JourneyMap({
       flows={flows}
       onStepSelect={onSelectModule}
       founderMode={founderMode}
+      problemStatement={problemStatement}
+      valueFeatures={valueFeatures}
+      narrativeComponents={narrativeComponents}
       founderJourneyRewrites={founderJourneyRewrites}
     />
   );

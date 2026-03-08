@@ -12,6 +12,7 @@ interface ArchitectureNode {
   type: 'component' | 'service' | 'api' | 'database' | 'external' | 'ui';
   complexity: 'low' | 'medium' | 'high';
   description: string;
+  business_role?: string;
   files: string[];
 }
 
@@ -19,6 +20,9 @@ interface ArchitectureEdge {
   from: string;
   to: string;
   type: 'imports' | 'calls' | 'stores' | 'renders';
+  label?: string;
+  data_flow?: string;
+  trigger?: string;
 }
 
 interface ArchitectureVisualization {
@@ -41,6 +45,7 @@ interface RenderNode {
   id: string;
   label: string;
   description: string;
+  businessRole?: string;
   domain: Domain;
   kind: DiagramNodeKind;
   fileCount: number;
@@ -56,6 +61,8 @@ interface RenderEdge {
   to: string;
   type: ArchitectureEdge['type'];
   label: string;
+  data_flow?: string;
+  trigger?: string;
   styleKind: 'data_flow' | 'reads_from' | 'triggers';
   weight: number;
 }
@@ -111,6 +118,7 @@ function buildDetailedLayout(architecture: ArchitectureVisualization): { nodes: 
     id: node.id,
     label: node.name,
     description: node.description || '',
+    businessRole: node.business_role || '',
     domain: inferDomain(node),
     kind: inferNodeKind(node),
     fileCount: node.files?.length || 0,
@@ -216,7 +224,9 @@ function buildDetailedLayout(architecture: ArchitectureVisualization): { nodes: 
         from: edge.from,
         to: edge.to,
         type: edge.type,
-        label: visual.label,
+        label: edge.label || visual.label,
+        data_flow: edge.data_flow,
+        trigger: edge.trigger,
         styleKind: visual.styleKind,
         weight: 1,
       };
@@ -509,8 +519,15 @@ export default function ArchitectureDiagram({
     return activeScenario.steps[normalizedStepIndex] || null;
   }, [activeScenario, normalizedStepIndex]);
 
+  const selectedNodeEdgeInsights = useMemo(() => {
+    if (!selectedNode) return [];
+    return renderedEdges
+      .filter(edge => edge.from === selectedNode.id || edge.to === selectedNode.id)
+      .slice(0, 4);
+  }, [renderedEdges, selectedNode]);
+
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     const applyPreference = () => {
       const reduced = mediaQuery.matches;
@@ -911,6 +928,11 @@ export default function ArchitectureDiagram({
                     {selectedNode.domain}
                   </div>
                   <div className="text-base font-semibold text-white">{selectedNode.label}</div>
+                  {selectedNode.businessRole && (
+                    <div className="text-xs text-indigo-200">
+                      {simplifyForFounder(selectedNode.businessRole, founderMode)}
+                    </div>
+                  )}
                   <p className="text-sm leading-relaxed text-gray-300">
                     {founderMode && founderDescriptions?.[selectedNode.id]
                       ? founderDescriptions[selectedNode.id]
@@ -930,6 +952,24 @@ export default function ArchitectureDiagram({
                   <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-gray-400">
                     Think of this as the {businessAnalogy(selectedNode.kind)}.
                   </div>
+                  {selectedNodeEdgeInsights.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-400">Connected Flows</div>
+                      {selectedNodeEdgeInsights.map(edge => (
+                        <div key={`edge-insight-${edge.id}`} className="text-xs text-gray-300">
+                          <div className="font-semibold text-gray-200">{edge.label}</div>
+                          {edge.data_flow && (
+                            <div className="mt-0.5">{simplifyForFounder(edge.data_flow, founderMode)}</div>
+                          )}
+                          {edge.trigger && (
+                            <div className="mt-0.5 text-gray-400">
+                              Trigger: {simplifyForFounder(edge.trigger, founderMode)}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -95,6 +95,7 @@ export async function GET(
       journey_graph: analysis.journey_graph || null,
       quality_report: analysis.quality_report || null,
       founder_content: analysis.founder_content || null,
+      business_context: analysis.business_context || null,
       repo_metadata: repoMetadata,
       analyzed_at: analysis.analyzed_at,
     });

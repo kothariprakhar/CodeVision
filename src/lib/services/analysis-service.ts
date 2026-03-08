@@ -61,12 +61,45 @@ const PASS2OutputSchema = z.object({
   relationships: z.array(PASS2RelationshipSchema).default([]),
 });
 
+const PASS3JourneyStepSchema = z.object({
+  action: z.string().min(1),
+  description: z.string().min(1),
+  module_name: z.string().min(1),
+});
+
+const PASS3JourneySchema = z.object({
+  title: z.string().min(1),
+  persona: z.string().min(1),
+  goal: z.string().min(1),
+  steps: z.array(PASS3JourneyStepSchema).min(2).max(6),
+});
+
+const PASS3ValueFeatureSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  business_impact: z.string().min(1),
+  modules_involved: z.array(z.string()).default([]),
+});
+
+const PASS3DataUsageSchema = z.object({
+  data_type: z.string().min(1),
+  collected_from: z.string().min(1),
+  used_for: z.string().min(1),
+  stored_in: z.string().default(''),
+});
+
+const PASS3ExternalDepSchema = z.object({
+  name: z.string().min(1),
+  why_needed: z.string().min(1),
+  what_breaks_without_it: z.string().min(1),
+});
+
 const PASS3BusinessAnalysisSchema = z.object({
   problem_statement: z.string().min(1),
-  user_journeys: z.array(z.string()).default([]),
-  value_features: z.array(z.string()).default([]),
-  data_usage: z.array(z.string()).default([]),
-  external_deps: z.array(z.string()).default([]),
+  user_journeys: z.array(PASS3JourneySchema).default([]),
+  value_features: z.array(PASS3ValueFeatureSchema).default([]),
+  data_usage: z.array(PASS3DataUsageSchema).default([]),
+  external_deps: z.array(PASS3ExternalDepSchema).default([]),
 });
 
 const ArchitectureNarrativeModeSchema = z.object({
@@ -553,6 +586,7 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
       type: inferNodeType(topCategory),
       complexity,
       description: summary.plain_summary,
+      business_role: summary.business_function,
       files: files.map(file => file.path).slice(0, 20),
     };
   });
@@ -564,6 +598,9 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
       from: rel.source,
       to: rel.target,
       type: inferEdgeTypeFromRelationship(rel),
+      label: rel.plain_label,
+      data_flow: rel.data_flow,
+      trigger: rel.trigger,
     }));
 
   const deterministicFallbackEdges = buildModuleEdgeContext(repoData)
@@ -572,6 +609,9 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
       from: edge.source,
       to: edge.target,
       type: 'imports' as const,
+      label: 'Shares module dependencies',
+      data_flow: 'Implementation dependency between modules.',
+      trigger: 'Module load and runtime interaction.',
     }));
 
   const finalEdges = pass2Edges.length > 0 ? pass2Edges : deterministicFallbackEdges;
@@ -609,6 +649,9 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
       from: sourceModule,
       to: targetId,
       type: 'imports',
+      label: `Depends on ${targetId.replace(/^external:/, '')}`,
+      data_flow: 'Calls or imports external dependency capabilities.',
+      trigger: 'Runtime integration path.',
     });
   }
 
@@ -905,21 +948,66 @@ export async function runFullAnalysis(
   emit({ stage: 'pass_2', progress: 65, message: 'Mapping relationships...' });
   const pass2 = await runPass2Relationships(moduleSummaries, moduleEdgeContext);
 
-  const pass3Prompt = `Based on the system analysis, identify:
-1) core business problem solved
-2) key user journeys
-3) revenue/value-generating features
-4) data collected and how it is used
-5) external services/APIs and why needed
-Write for a CEO who has never seen code.
+  const pass3Prompt = `Based on the system's modules and relationships, provide:
+
+1) problem_statement: the core business problem this product solves (1-2 sentences for a CEO)
+
+2) user_journeys: up to 4 real user flows through this system.
+   CRITICAL: each step's "module_name" MUST be one of these exact names:
+   ${Object.keys(moduleSummaries).join(', ')}
+   Each journey needs 2-6 steps showing how data/control flows between modules.
+
+3) value_features: what makes this product valuable — include which modules deliver each feature
+
+4) data_usage: what data the system collects, where it comes from, and how it's used.
+   Each entry needs: data_type, collected_from, used_for, stored_in
+
+5) external_deps: external services with:
+   - why_needed: business reason
+   - what_breaks_without_it: consequence of removing it
+
+Write for a CEO who has never seen code. Use plain English.
 
 Output format:
 {
   "problem_statement": "...",
-  "user_journeys": ["..."],
-  "value_features": ["..."],
-  "data_usage": ["..."],
-  "external_deps": ["..."]
+  "user_journeys": [
+    {
+      "title": "...",
+      "persona": "...",
+      "goal": "...",
+      "steps": [
+        {
+          "action": "...",
+          "description": "...",
+          "module_name": "..."
+        }
+      ]
+    }
+  ],
+  "value_features": [
+    {
+      "name": "...",
+      "description": "...",
+      "business_impact": "...",
+      "modules_involved": ["..."]
+    }
+  ],
+  "data_usage": [
+    {
+      "data_type": "...",
+      "collected_from": "...",
+      "used_for": "...",
+      "stored_in": "..."
+    }
+  ],
+  "external_deps": [
+    {
+      "name": "...",
+      "why_needed": "...",
+      "what_breaks_without_it": "..."
+    }
+  ]
 }`;
   emit({ stage: 'pass_3', progress: 80, message: 'Extracting business logic...' });
   const pass3 = await runAnthropicPassWithSchema(PASS3BusinessAnalysisSchema, 3, pass3Prompt, {
@@ -1054,9 +1142,14 @@ Return JSON matching the exact schema specified.`;
     })),
     journeys: pass3.parsed.user_journeys.map((journey, index) => ({
       id: `journey_${index + 1}`,
-      name: journey,
-      goal: journey,
-      steps: [],
+      name: journey.title,
+      goal: journey.goal,
+      steps: journey.steps.map((step, stepIndex) => ({
+        id: `${index + 1}_${stepIndex + 1}`,
+        name: step.action,
+        description: step.description,
+        module_name: step.module_name,
+      })),
     })),
     risks: findings.map(finding => ({
       title: finding.title,
