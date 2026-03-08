@@ -364,7 +364,7 @@ export default function ProjectDetail() {
             message: payload.message || 'Analyzing...',
           });
 
-          if (payload.status === 'completed' || payload.stage === 'done') {
+          if (payload.status === 'completed') {
             eventSource.close();
             eventSourceRef.current = null;
             setAnalyzing(false);

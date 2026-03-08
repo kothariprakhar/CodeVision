@@ -1125,7 +1125,6 @@ Return JSON matching the exact schema specified.`;
   };
 
   await setCachedAnalysis(cacheKey, fullAnalysis);
-  emit({ stage: 'done', progress: 100, message: 'Analysis complete!' });
   return fullAnalysis;
 }
 
