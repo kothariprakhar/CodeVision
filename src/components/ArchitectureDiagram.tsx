@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useMemo, useState } from 'react';
+import { simplifyForFounder } from '@/lib/utils/founder-language';
 
 interface ArchitectureNode {
   id: string;
@@ -22,321 +23,555 @@ interface ArchitectureVisualization {
   edges: ArchitectureEdge[];
 }
 
-type MVCLayer = 'view' | 'controller' | 'model';
-
-interface MVCComponent {
-  id: string;
-  name: string;
-  layer: MVCLayer;
-  originalType: string;
-  complexity: 'low' | 'medium' | 'high';
-  files: string[];
-  description: string;
-}
+type Domain = 'auth' | 'data' | 'payments' | 'comms' | 'core' | 'infra';
+type DiagramNodeKind = 'service' | 'database' | 'external' | 'queue' | 'domain';
 
 interface ArchitectureDiagramProps {
   architecture: ArchitectureVisualization;
+  highlightedNodeId?: string | null;
+  founderMode?: boolean;
 }
 
-export default function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) {
-  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+interface RenderNode {
+  id: string;
+  label: string;
+  description: string;
+  domain: Domain;
+  kind: DiagramNodeKind;
+  fileCount: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
-  // Map architecture nodes to MVC layers
-  const mvcComponents = useMemo(() => {
-    if (!architecture?.nodes) return [];
+interface RenderEdge {
+  id: string;
+  from: string;
+  to: string;
+  type: ArchitectureEdge['type'];
+  label: string;
+  styleKind: 'data_flow' | 'reads_from' | 'triggers';
+  weight: number;
+}
 
-    return architecture.nodes.map((node): MVCComponent => {
-      let layer: MVCLayer = 'controller';
+const DOMAIN_COLORS: Record<Domain, string> = {
+  auth: 'hsl(220, 80%, 60%)',
+  data: 'hsl(160, 70%, 45%)',
+  payments: 'hsl(45, 90%, 55%)',
+  comms: 'hsl(280, 65%, 55%)',
+  core: 'hsl(340, 75%, 55%)',
+  infra: 'hsl(200, 20%, 50%)',
+};
 
-      if (node.type === 'ui' || node.type === 'component') {
-        layer = 'view';
-      } else if (node.type === 'api') {
-        layer = 'controller';
-      } else if (node.type === 'service' || node.type === 'database') {
-        layer = 'model';
-      } else if (node.type === 'external') {
-        layer = 'model';
+function titleCase(input: string): string {
+  return input.charAt(0).toUpperCase() + input.slice(1);
+}
+
+function inferDomain(node: ArchitectureNode): Domain {
+  const text = `${node.name} ${node.description} ${(node.files || []).join(' ')}`.toLowerCase();
+  if (/(auth|login|signup|session|permission|identity)/.test(text)) return 'auth';
+  if (/(data|database|db|schema|model|storage|cache)/.test(text)) return 'data';
+  if (/(payment|billing|checkout|invoice|subscription|pricing)/.test(text)) return 'payments';
+  if (/(email|sms|message|notify|notification|webhook|chat)/.test(text)) return 'comms';
+  if (/(queue|worker|job|cron|scheduler|infra|deploy|k8s|docker)/.test(text)) return 'infra';
+  return 'core';
+}
+
+function inferNodeKind(node: ArchitectureNode): Exclude<DiagramNodeKind, 'domain'> {
+  const text = `${node.type} ${node.name}`.toLowerCase();
+  if (/(database|db|storage|cache|redis|postgres|mongo)/.test(text)) return 'database';
+  if (/(external|third|stripe|twilio|s3|gcp|azure)/.test(text)) return 'external';
+  if (/(queue|worker|job|celery|bull|sidekiq)/.test(text)) return 'queue';
+  return 'service';
+}
+
+function edgeVisual(type: ArchitectureEdge['type']): { styleKind: RenderEdge['styleKind']; label: string } {
+  if (type === 'stores') return { styleKind: 'reads_from', label: 'reads/stores data' };
+  if (type === 'calls') return { styleKind: 'triggers', label: 'triggers action' };
+  if (type === 'renders') return { styleKind: 'data_flow', label: 'renders output' };
+  return { styleKind: 'data_flow', label: 'sends data' };
+}
+
+function nodeSize(kind: DiagramNodeKind): { width: number; height: number } {
+  if (kind === 'domain') return { width: 270, height: 115 };
+  if (kind === 'database') return { width: 260, height: 95 };
+  if (kind === 'external') return { width: 260, height: 95 };
+  if (kind === 'queue') return { width: 260, height: 95 };
+  return { width: 270, height: 105 };
+}
+
+function buildDetailedLayout(architecture: ArchitectureVisualization): { nodes: RenderNode[]; edges: RenderEdge[]; width: number; height: number } {
+  const rankedNodes = architecture.nodes.map(node => ({
+    id: node.id,
+    label: node.name,
+    description: node.description || '',
+    domain: inferDomain(node),
+    kind: inferNodeKind(node),
+    fileCount: node.files?.length || 0,
+  }));
+
+  const nodeById = new Map(rankedNodes.map(node => [node.id, node]));
+  const indegree = new Map<string, number>();
+  const outgoing = new Map<string, string[]>();
+
+  rankedNodes.forEach(node => {
+    indegree.set(node.id, 0);
+    outgoing.set(node.id, []);
+  });
+
+  architecture.edges.forEach(edge => {
+    if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) return;
+    indegree.set(edge.to, (indegree.get(edge.to) || 0) + 1);
+    const next = outgoing.get(edge.from);
+    if (next) next.push(edge.to);
+  });
+
+  const queue = rankedNodes
+    .filter(node => (indegree.get(node.id) || 0) === 0)
+    .map(node => node.id);
+  const level = new Map<string, number>();
+  rankedNodes.forEach(node => level.set(node.id, 0));
+
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    const nextLevel = (level.get(current) || 0) + 1;
+    (outgoing.get(current) || []).forEach(target => {
+      if (nextLevel > (level.get(target) || 0)) {
+        level.set(target, nextLevel);
       }
+      indegree.set(target, (indegree.get(target) || 0) - 1);
+      if ((indegree.get(target) || 0) === 0) {
+        queue.push(target);
+      }
+    });
+  }
 
+  rankedNodes.forEach(node => {
+    const base = level.get(node.id) || 0;
+    const kindBoost = node.kind === 'database' ? 2 : node.kind === 'queue' ? 1 : 0;
+    level.set(node.id, base + kindBoost);
+  });
+
+  const layers = new Map<number, typeof rankedNodes>();
+  rankedNodes.forEach(node => {
+    const l = level.get(node.id) || 0;
+    if (!layers.has(l)) layers.set(l, []);
+    layers.get(l)?.push(node);
+  });
+
+  const sortedLayerKeys = Array.from(layers.keys()).sort((a, b) => a - b);
+  const positioned: RenderNode[] = [];
+
+  const xStart = 70;
+  const yStart = 70;
+  const xGap = 320;
+  const yGap = 175;
+
+  sortedLayerKeys.forEach((layer, layerIndex) => {
+    const layerNodes = layers.get(layer) || [];
+    layerNodes.sort((a, b) => b.fileCount - a.fileCount || a.label.localeCompare(b.label));
+    layerNodes.forEach((node, index) => {
+      const dims = nodeSize(node.kind);
+      positioned.push({
+        ...node,
+        x: xStart + index * xGap,
+        y: yStart + layerIndex * yGap,
+        width: dims.width,
+        height: dims.height,
+      });
+    });
+  });
+
+  const nonExternal = positioned.filter(node => node.kind !== 'external');
+  const external = positioned.filter(node => node.kind === 'external');
+  const maxX = nonExternal.reduce((max, node) => Math.max(max, node.x), xStart);
+  const maxY = nonExternal.reduce((max, node) => Math.max(max, node.y), yStart);
+
+  external.forEach((node, index) => {
+    node.x = maxX + 330;
+    node.y = yStart + index * yGap;
+  });
+
+  const databases = positioned.filter(node => node.kind === 'database');
+  const floorY = Math.max(maxY + 180, yStart + sortedLayerKeys.length * yGap);
+  databases.forEach((node, index) => {
+    node.y = floorY + index * 16;
+  });
+
+  const finalMaxX = positioned.reduce((max, node) => Math.max(max, node.x + node.width), 0);
+  const finalMaxY = positioned.reduce((max, node) => Math.max(max, node.y + node.height), 0);
+
+  const edges: RenderEdge[] = architecture.edges
+    .filter(edge => nodeById.has(edge.from) && nodeById.has(edge.to))
+    .map((edge, index) => {
+      const visual = edgeVisual(edge.type);
       return {
-        id: node.id,
-        name: node.name,
-        layer,
-        originalType: node.type,
-        complexity: node.complexity,
-        files: node.files,
-        description: node.description,
+        id: `${edge.from}-${edge.to}-${index}`,
+        from: edge.from,
+        to: edge.to,
+        type: edge.type,
+        label: visual.label,
+        styleKind: visual.styleKind,
+        weight: 1,
       };
     });
-  }, [architecture]);
 
-  // Group components by layer
-  const componentsByLayer = useMemo(() => {
-    const grouped = {
-      view: [] as MVCComponent[],
-      controller: [] as MVCComponent[],
-      model: [] as MVCComponent[],
+  return {
+    nodes: positioned,
+    edges,
+    width: Math.max(1200, finalMaxX + 140),
+    height: Math.max(760, finalMaxY + 140),
+  };
+}
+
+function buildGroupedLayout(architecture: ArchitectureVisualization): { nodes: RenderNode[]; edges: RenderEdge[]; width: number; height: number } {
+  const counts = new Map<Domain, number>();
+  const nodeDomain = new Map<string, Domain>();
+
+  architecture.nodes.forEach(node => {
+    const domain = inferDomain(node);
+    nodeDomain.set(node.id, domain);
+    counts.set(domain, (counts.get(domain) || 0) + 1);
+  });
+
+  const domains = (['auth', 'data', 'payments', 'comms', 'core', 'infra'] as Domain[])
+    .filter(domain => (counts.get(domain) || 0) > 0);
+
+  const columns = 3;
+  const xStart = 110;
+  const yStart = 110;
+  const xGap = 360;
+  const yGap = 235;
+
+  const nodes: RenderNode[] = domains.map((domain, idx) => {
+    const row = Math.floor(idx / columns);
+    const col = idx % columns;
+    const dims = nodeSize('domain');
+    return {
+      id: `domain:${domain}`,
+      label: `${titleCase(domain)} Domain`,
+      description: `${counts.get(domain) || 0} major modules`,
+      domain,
+      kind: 'domain',
+      fileCount: counts.get(domain) || 0,
+      x: xStart + col * xGap,
+      y: yStart + row * yGap,
+      width: dims.width,
+      height: dims.height,
     };
+  });
 
-    mvcComponents.forEach(comp => {
-      grouped[comp.layer].push(comp);
+  const edgeWeights = new Map<string, number>();
+  architecture.edges.forEach(edge => {
+    const sourceDomain = nodeDomain.get(edge.from);
+    const targetDomain = nodeDomain.get(edge.to);
+    if (!sourceDomain || !targetDomain || sourceDomain === targetDomain) return;
+    const key = `${sourceDomain}->${targetDomain}`;
+    edgeWeights.set(key, (edgeWeights.get(key) || 0) + 1);
+  });
+
+  const edges: RenderEdge[] = Array.from(edgeWeights.entries()).map(([key, weight], index) => {
+    const [sourceDomain, targetDomain] = key.split('->') as [Domain, Domain];
+    return {
+      id: `group-${index}`,
+      from: `domain:${sourceDomain}`,
+      to: `domain:${targetDomain}`,
+      type: 'imports',
+      label: `${weight} connections`,
+      styleKind: 'data_flow',
+      weight,
+    };
+  });
+
+  return {
+    nodes,
+    edges,
+    width: Math.max(1280, xStart + columns * xGap + 120),
+    height: 760,
+  };
+}
+
+function edgeStyle(edge: RenderEdge, isActive: boolean): { stroke: string; width: number; dash?: string; opacity: number } {
+  const baseWidth = edge.styleKind === 'data_flow' ? 2 : edge.styleKind === 'triggers' ? 2.4 : 1.9;
+  const width = Math.min(5.4, baseWidth + edge.weight * 0.2 + (isActive ? 0.8 : 0));
+  if (edge.styleKind === 'reads_from') {
+    return {
+      stroke: 'rgba(120, 220, 190, 0.95)',
+      width,
+      dash: '7 5',
+      opacity: isActive ? 1 : 0.5,
+    };
+  }
+  if (edge.styleKind === 'triggers') {
+    return {
+      stroke: 'rgba(255, 208, 112, 0.96)',
+      width,
+      dash: '2 6',
+      opacity: isActive ? 1 : 0.56,
+    };
+  }
+  return {
+    stroke: 'rgba(138, 168, 255, 0.94)',
+    width,
+    opacity: isActive ? 1 : 0.55,
+  };
+}
+
+export default function ArchitectureDiagram({
+  architecture,
+  highlightedNodeId,
+  founderMode = false,
+}: ArchitectureDiagramProps) {
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [activeDomains, setActiveDomains] = useState<Set<Domain>>(
+    new Set(['auth', 'data', 'payments', 'comms', 'core', 'infra'])
+  );
+
+  const detailed = useMemo(() => buildDetailedLayout(architecture), [architecture]);
+  const grouped = useMemo(() => buildGroupedLayout(architecture), [architecture]);
+
+  const semanticMode = zoomLevel < 0.78 ? 'grouped' : 'detailed';
+  const baseGraph = semanticMode === 'grouped' ? grouped : detailed;
+
+  const renderedNodes = useMemo(
+    () => baseGraph.nodes.filter(node => activeDomains.has(node.domain)),
+    [baseGraph.nodes, activeDomains]
+  );
+
+  const renderedNodeIds = useMemo(
+    () => new Set(renderedNodes.map(node => node.id)),
+    [renderedNodes]
+  );
+
+  const renderedEdges = useMemo(
+    () => baseGraph.edges.filter(edge => renderedNodeIds.has(edge.from) && renderedNodeIds.has(edge.to)),
+    [baseGraph.edges, renderedNodeIds]
+  );
+
+  const focusNodeId = hoveredNodeId || highlightedNodeId || null;
+
+  const connectedNodeIds = useMemo(() => {
+    if (!focusNodeId) return new Set<string>();
+    const connected = new Set<string>([focusNodeId]);
+    renderedEdges.forEach(edge => {
+      if (edge.from === focusNodeId || edge.to === focusNodeId) {
+        connected.add(edge.from);
+        connected.add(edge.to);
+      }
     });
+    return connected;
+  }, [focusNodeId, renderedEdges]);
 
-    return grouped;
-  }, [mvcComponents]);
+  const selectedNode = useMemo(() => {
+    const selectedId = selectedNodeId || highlightedNodeId || '';
+    return detailed.nodes.find(node => node.id === selectedId)
+      || grouped.nodes.find(node => node.id === selectedId)
+      || null;
+  }, [detailed.nodes, grouped.nodes, selectedNodeId, highlightedNodeId]);
 
-  // Get layers affected by selected component
-  const getAffectedLayers = useCallback((componentId: string | null) => {
-    if (!componentId || !architecture) return [];
-
-    const component = mvcComponents.find(c => c.id === componentId);
-    if (!component) return [];
-
-    const affectedLayers = new Set<MVCLayer>([component.layer]);
-
-    const findConnected = (nodeId: string, visited: Set<string>) => {
-      if (visited.has(nodeId)) return;
-      visited.add(nodeId);
-
-      architecture.edges.forEach(edge => {
-        if (edge.from === nodeId) {
-          const targetComp = mvcComponents.find(c => c.id === edge.to);
-          if (targetComp) {
-            affectedLayers.add(targetComp.layer);
-            findConnected(edge.to, visited);
-          }
-        }
-        if (edge.to === nodeId) {
-          const sourceComp = mvcComponents.find(c => c.id === edge.from);
-          if (sourceComp) {
-            affectedLayers.add(sourceComp.layer);
-            findConnected(edge.from, visited);
-          }
-        }
-      });
-    };
-
-    findConnected(componentId, new Set());
-
-    return Array.from(affectedLayers);
-  }, [architecture, mvcComponents]);
-
-  const getComplexityBadge = (complexity: 'low' | 'medium' | 'high') => {
-    switch (complexity) {
-      case 'low':
-        return 'bg-green-500/20 text-green-400 border-green-500/40';
-      case 'medium':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40';
-      case 'high':
-        return 'bg-red-500/20 text-red-400 border-red-500/40';
-    }
+  const toggleDomain = (domain: Domain): void => {
+    setActiveDomains(prev => {
+      const next = new Set(prev);
+      if (next.has(domain)) next.delete(domain);
+      else next.add(domain);
+      if (next.size === 0) return new Set(['auth', 'data', 'payments', 'comms', 'core', 'infra']);
+      return next;
+    });
   };
 
-  const selectedComponentData = selectedComponent
-    ? mvcComponents.find(c => c.id === selectedComponent)
-    : null;
-
-  const affectedLayers = selectedComponent ? getAffectedLayers(selectedComponent) : [];
-  const layerCount = affectedLayers.length;
-
   if (!architecture || architecture.nodes.length === 0) {
-    return (
-      <div className="text-center text-gray-500 py-8">
-        No architecture data available
-      </div>
-    );
+    return <div className="py-10 text-center text-sm text-gray-400">No architecture data available.</div>;
   }
 
   return (
-    <div>
-      {/* Simple Summary Stats */}
-      <div className="mb-4 text-sm text-gray-400">
-        View: {componentsByLayer.view.length} | Controller: {componentsByLayer.controller.length} | Model: {componentsByLayer.model.length}
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        {(['auth', 'data', 'payments', 'comms', 'core', 'infra'] as Domain[]).map(domain => (
+          <button
+            key={domain}
+            onClick={() => toggleDomain(domain)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              activeDomains.has(domain) ? 'text-white' : 'text-gray-400'
+            }`}
+            style={{
+              borderColor: activeDomains.has(domain) ? `${DOMAIN_COLORS[domain]}CC` : 'rgba(255,255,255,0.16)',
+              background: activeDomains.has(domain) ? `${DOMAIN_COLORS[domain]}33` : 'rgba(255,255,255,0.02)',
+            }}
+          >
+            {titleCase(domain)}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2 text-xs text-gray-300">
+          <span>Zoom</span>
+          <input
+            aria-label="Diagram zoom"
+            type="range"
+            min={0.45}
+            max={1.3}
+            step={0.01}
+            value={zoomLevel}
+            onChange={event => setZoomLevel(Number(event.target.value))}
+            className="h-1.5 w-28 accent-indigo-400"
+          />
+          <span className="w-14 text-right">{Math.round(zoomLevel * 100)}%</span>
+        </div>
       </div>
 
-      {/* Main Layout */}
-      <div className="flex gap-6">
-        {/* Left: MVC Flow Diagram */}
-        <div className="flex-1">
-          {/* Horizontal Flow */}
-          <div className="flex items-center justify-between mb-6">
-            {/* View Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
-                borderColor: 'rgba(168, 85, 247, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-purple-400 text-sm">View</h3>
-                <p className="text-xs text-gray-500">UI</p>
-              </div>
-            </div>
+      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+        <div className="h-[620px] overflow-auto rounded-2xl border border-white/10 bg-[#05070d]">
+          <div
+            className="relative"
+            style={{
+              width: baseGraph.width,
+              height: baseGraph.height,
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            <svg
+              width={baseGraph.width}
+              height={baseGraph.height}
+              className="absolute inset-0"
+              aria-hidden
+            >
+              <defs>
+                <pattern id="grid-pattern" width="28" height="28" patternUnits="userSpaceOnUse">
+                  <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(122,136,166,0.12)" strokeWidth="1" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
-            <div className="px-2 text-gray-500">
-              <svg width="30" height="16" viewBox="0 0 30 16">
-                <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" strokeWidth="2" />
-                <polygon points="22,4 30,8 22,12" fill="currentColor" />
-              </svg>
-            </div>
+              {renderedEdges.map(edge => {
+                const source = renderedNodes.find(node => node.id === edge.from);
+                const target = renderedNodes.find(node => node.id === edge.to);
+                if (!source || !target) return null;
 
-            {/* Controller Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%)',
-                borderColor: 'rgba(59, 130, 246, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-blue-400 text-sm">Controller</h3>
-                <p className="text-xs text-gray-500">API</p>
-              </div>
-            </div>
+                const sx = source.x + source.width / 2;
+                const sy = source.y + source.height / 2;
+                const tx = target.x + target.width / 2;
+                const ty = target.y + target.height / 2;
+                const midY = sy + (ty - sy) / 2;
 
-            <div className="px-2 text-gray-500">
-              <svg width="30" height="16" viewBox="0 0 30 16">
-                <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" strokeWidth="2" />
-                <polygon points="22,4 30,8 22,12" fill="currentColor" />
-              </svg>
-            </div>
+                const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
+                const style = edgeStyle(edge, isActive);
+                const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
 
-            {/* Model Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.05) 100%)',
-                borderColor: 'rgba(34, 197, 94, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-green-400 text-sm">Model</h3>
-                <p className="text-xs text-gray-500">Data</p>
-              </div>
-            </div>
-          </div>
+                return (
+                  <g key={edge.id}>
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={style.stroke}
+                      strokeWidth={style.width}
+                      strokeDasharray={style.dash}
+                      opacity={style.opacity}
+                      markerEnd="url(#arrowhead)"
+                    />
+                    <text
+                      x={(sx + tx) / 2}
+                      y={midY - 8}
+                      fill="rgba(230,236,250,0.9)"
+                      fontSize="11"
+                      fontWeight="600"
+                      textAnchor="middle"
+                      opacity={style.opacity}
+                    >
+                      {edge.label}
+                    </text>
+                  </g>
+                );
+              })}
 
-          {/* Component Cards */}
-          <div className="grid grid-cols-3 gap-3">
-            {/* View Components */}
-            <div className="space-y-2">
-              {componentsByLayer.view.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.view.map(comp => (
-                  <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-purple-500/20 border-purple-500 ring-1 ring-purple-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-purple-500/50'
-                    }`}
-                  >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
-                      </span>
+              <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                  <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
+                </marker>
+              </defs>
+            </svg>
+
+            {renderedNodes.map(node => {
+              const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
+              const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
+              const borderColor = DOMAIN_COLORS[node.domain];
+              return (
+                <button
+                  key={node.id}
+                  onMouseEnter={() => setHoveredNodeId(node.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                  onClick={() => setSelectedNodeId(node.id)}
+                  className={`absolute rounded-xl border text-left transition-all ${
+                    isSelected ? 'ring-2 ring-white/65' : ''
+                  }`}
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    width: node.width,
+                    height: node.height,
+                    borderColor: `${borderColor}B3`,
+                    background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
+                    boxShadow: `0 0 0 1px ${borderColor}24`,
+                    opacity: isDimmed ? 0.26 : 1,
+                  }}
+                >
+                  <div className="p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-400">
+                      {node.kind === 'domain' ? 'Domain Group' : titleCase(node.domain)}
                     </div>
-                  </button>
-                ))
-              )}
-            </div>
-
-            {/* Controller Components */}
-            <div className="space-y-2">
-              {componentsByLayer.controller.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.controller.map(comp => (
-                  <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-blue-500/20 border-blue-500 ring-1 ring-blue-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-blue-500/50'
-                    }`}
-                  >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
-                      </span>
+                    <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-gray-300">
+                      {simplifyForFounder(node.description || 'Core system module', founderMode)}
                     </div>
-                  </button>
-                ))
-              )}
-            </div>
-
-            {/* Model Components */}
-            <div className="space-y-2">
-              {componentsByLayer.model.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.model.map(comp => (
-                  <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-green-500/20 border-green-500 ring-1 ring-green-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-green-500/50'
-                    }`}
-                  >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
-                      </span>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Right: Detail Panel */}
-        <div className="w-64 flex-shrink-0">
-          <div className="p-3 rounded-xl border bg-white/5 border-white/10 min-h-[200px]">
-            {selectedComponentData ? (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-white text-sm">{selectedComponentData.name}</h3>
-
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Description</div>
-                  <div className="text-xs text-gray-300">
-                    {selectedComponentData.description || 'No description'}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Files ({selectedComponentData.files.length})</div>
-                  <div className="space-y-0.5 max-h-20 overflow-y-auto">
-                    {selectedComponentData.files.map((file, i) => (
-                      <div key={i} className="text-xs text-gray-400 truncate">{file}</div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Impact</div>
-                  <div className={`text-xs font-medium ${
-                    layerCount === 1 ? 'text-green-400' :
-                    layerCount === 2 ? 'text-yellow-400' :
-                    'text-red-400'
-                  }`}>
-                    {layerCount} layer{layerCount !== 1 ? 's' : ''} affected
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 text-xs">
-                Click a component
-              </div>
-            )}
+        <aside className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <h3 className="text-sm font-semibold text-white">Component Details</h3>
+          <div className="mt-1 text-xs text-gray-400">
+            {semanticMode === 'grouped' ? 'Grouped view (zoomed out)' : 'Detailed view (zoomed in)'}
           </div>
-        </div>
+          {!selectedNode ? (
+            <p className="mt-3 text-xs text-gray-400">
+              Click a node to see a founder-friendly explanation of what it does and why it matters.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-3 text-xs text-gray-300">
+              <div>
+                <div className="text-[11px] uppercase tracking-wide text-gray-500">{selectedNode.domain}</div>
+                <div className="mt-1 text-base font-semibold text-white">{selectedNode.label}</div>
+              </div>
+              <p>
+                {simplifyForFounder(
+                  selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
+                  founderMode
+                )}
+              </p>
+              <div className="rounded-lg border border-white/10 bg-black/25 p-2">
+                <div>Type: {selectedNode.kind}</div>
+                <div>Files: {selectedNode.fileCount}</div>
+                <div>
+                  Business framing: This acts like the{' '}
+                  {selectedNode.kind === 'database'
+                    ? 'filing cabinet for reliable records'
+                    : selectedNode.kind === 'external'
+                      ? 'outside specialist your team calls when needed'
+                      : selectedNode.kind === 'queue'
+                        ? 'back-office task line that keeps user actions fast'
+                        : selectedNode.kind === 'domain'
+                          ? 'cross-functional team responsible for one business area'
+                          : 'operational team executing a key workflow'}
+                  .
+                </div>
+              </div>
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   );

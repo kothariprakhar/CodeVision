@@ -41,6 +41,8 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   responseType: 'quick' | 'detailed';
+  followUps?: string[];
+  referencedModules?: string[];
 }
 
 export interface Project {

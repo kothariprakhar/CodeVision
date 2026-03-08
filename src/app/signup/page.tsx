@@ -85,9 +85,9 @@ export default function SignupPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-white mb-2">You're on the waitlist!</h2>
+            <h2 className="text-xl font-semibold text-white mb-2">You&apos;re on the waitlist!</h2>
             <p className="text-sm text-gray-400 mb-4">
-              We'll email you at <span className="text-purple-300">{email}</span> when your account is ready.
+              We&apos;ll email you at <span className="text-purple-300">{email}</span> when your account is ready.
             </p>
             <p className="text-xs text-gray-500">
               Thank you for your interest in Code Vision!
