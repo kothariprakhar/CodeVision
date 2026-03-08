@@ -1065,7 +1065,26 @@ Return JSON matching the exact schema specified.`;
     })),
     business_analysis: pass3.parsed,
   };
-  const pass6 = await runAnthropicPassWithSchema(PASS6FounderContentSchema, 6, pass6Prompt, pass6Context);
+  const emptyPass6: PASS6Output = {
+    node_descriptions: {},
+    finding_rewrites: [],
+    journey_rewrites: {},
+    risk_rewrites: [],
+  };
+  let pass6: PassResult<PASS6Output> = {
+    pass_num: 6,
+    prompt: pass6Prompt,
+    parsed: emptyPass6,
+    raw_response: JSON.stringify(emptyPass6),
+  };
+  try {
+    pass6 = await runAnthropicPassWithSchema(PASS6FounderContentSchema, 6, pass6Prompt, pass6Context);
+  } catch (pass6Error) {
+    console.warn(
+      'Pass 6 (founder content) failed:',
+      pass6Error instanceof Error ? pass6Error.message : pass6Error
+    );
+  }
 
   const founderContent: FounderContent = {
     narrative: pass4.parsed.founder_mode,

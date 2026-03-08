@@ -145,7 +145,7 @@ async function runJob(jobId: string): Promise<void> {
       const stage = (event.stage || 'parsing') as RepoJobStage;
       if (jobs.get(jobId)?.cancelled) return;
       updateJob(jobId, {
-        status: stage === 'done' ? 'completed' : 'running',
+        status: 'running',
         stage,
         progress: Math.max(0, Math.min(100, Math.floor(event.progress))),
         message: event.message || '',
@@ -243,4 +243,3 @@ export async function resolveAnalysisFromJob(jobId: string): Promise<{
     project_id: job?.project_id || null,
   };
 }
-

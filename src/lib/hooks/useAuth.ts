@@ -52,23 +52,17 @@ export function useAuth() {
 
   // Refetch user data when window gains focus (handles login in same tab)
   useEffect(() => {
+    let lastFetch = 0;
     const handleFocus = () => {
-      void fetchUser();
+      const now = Date.now();
+      if (now - lastFetch > 30000) {
+        lastFetch = now;
+        void fetchUser();
+      }
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [fetchUser]);
-
-  // Poll for auth changes every 2 seconds when document is visible
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchUser();
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
   }, [fetchUser]);
 
   const logout = useCallback(async () => {

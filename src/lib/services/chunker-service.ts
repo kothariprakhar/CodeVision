@@ -24,11 +24,43 @@ const INCLUDED_EXTENSIONS = new Set([
   '.py',
   '.js',
   '.ts',
+  '.jsx',
+  '.tsx',
+  '.mjs',
+  '.cjs',
   '.go',
   '.java',
   '.rb',
   '.rs',
+  '.html',
+  '.htm',
+  '.css',
+  '.scss',
+  '.sass',
+  '.less',
+  '.vue',
+  '.svelte',
+  '.php',
+  '.swift',
+  '.kt',
+  '.kts',
+  '.c',
+  '.cpp',
+  '.cc',
+  '.h',
+  '.hpp',
+  '.cs',
+  '.dart',
+  '.lua',
+  '.sh',
+  '.bash',
+  '.sql',
+  '.graphql',
+  '.gql',
+  '.proto',
 ]);
+
+export const INCLUDED_EXTENSIONS_LIST = Array.from(INCLUDED_EXTENSIONS.values()).sort();
 
 const INCLUDED_SPECIAL_FILES = new Set([
   'dockerfile',
@@ -89,6 +121,24 @@ function detectLanguage(filePath: string): string {
   if (ext === '.java') return 'java';
   if (ext === '.rb') return 'ruby';
   if (ext === '.rs') return 'rust';
+  if (ext === '.html' || ext === '.htm') return 'html';
+  if (ext === '.css') return 'css';
+  if (ext === '.scss' || ext === '.sass') return 'scss';
+  if (ext === '.less') return 'less';
+  if (ext === '.vue') return 'vue';
+  if (ext === '.svelte') return 'svelte';
+  if (ext === '.php') return 'php';
+  if (ext === '.swift') return 'swift';
+  if (ext === '.kt' || ext === '.kts') return 'kotlin';
+  if (ext === '.c' || ext === '.h') return 'c';
+  if (ext === '.cpp' || ext === '.hpp' || ext === '.cc') return 'cpp';
+  if (ext === '.cs') return 'csharp';
+  if (ext === '.dart') return 'dart';
+  if (ext === '.lua') return 'lua';
+  if (ext === '.sh' || ext === '.bash') return 'shell';
+  if (ext === '.sql') return 'sql';
+  if (ext === '.graphql' || ext === '.gql') return 'graphql';
+  if (ext === '.proto') return 'protobuf';
   if (ext === '.json') return 'json';
   if (ext === '.yml' || ext === '.yaml') return 'yaml';
   if (ext === '.md') return 'markdown';
@@ -385,4 +435,3 @@ export function groupByModule(manifest: FileEntry[]): Record<string, FileEntry[]
 export const build_file_manifest = buildFileManifest;
 export const prioritize_files = prioritizeFiles;
 export const group_by_module = groupByModule;
-

@@ -144,14 +144,14 @@ export default function ProjectDetail() {
       if (response.ok) {
         const data = await response.json();
         setVersions(data.versions || []);
-        if (data.versions?.length > 0 && !selectedVersion) {
+        if (data.versions?.length > 0) {
           setSelectedVersion(data.versions[0].id);
         }
       }
     } catch (err) {
       console.error('Failed to fetch versions:', err);
     }
-  }, [projectId, selectedVersion]);
+  }, [projectId]);
 
   const fetchAnalysis = useCallback(async (versionId?: string) => {
     try {
@@ -369,11 +369,12 @@ export default function ProjectDetail() {
             eventSourceRef.current = null;
             setAnalyzing(false);
             setActiveJobId(null);
-            await fetchProject();
-            await fetchVersions();
             if (payload.analysis_id) {
               setSelectedVersion(payload.analysis_id);
             }
+            await fetchProject();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await fetchVersions();
           }
 
           if (payload.status === 'failed' || payload.stage === 'failed') {
@@ -546,9 +547,11 @@ export default function ProjectDetail() {
                 🧠 Plain Language {founderMode ? 'On' : 'Off'}
               </button>
               <span className="mt-1 text-[10px] text-gray-500">
-                {hasFounderContent
-                  ? 'AI-powered business language'
-                  : 'Basic term replacement (re-analyze for AI version)'}
+                {founderMode
+                  ? hasFounderContent
+                    ? 'AI-powered business language'
+                    : 'Simplifies technical terms automatically'
+                  : 'Toggle to simplify technical jargon'}
               </span>
             </div>
             {getLastAnalyzedText() && (

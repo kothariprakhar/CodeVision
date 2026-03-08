@@ -6,7 +6,7 @@ import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 import { generateBusinessLensArtifacts } from './lenses';
 import { cloneRepo, cleanupClone, fetchRepoMetadata } from './repo-ingestion';
-import { buildFileManifest, groupByModule, prioritizeFiles } from './chunker-service';
+import { buildFileManifest, groupByModule, prioritizeFiles, INCLUDED_EXTENSIONS_LIST } from './chunker-service';
 import { runFullAnalysis } from './analysis-service';
 import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
 import {
@@ -320,6 +320,17 @@ export async function analyzeProject(
         analysisOutput.raw_response,
         deterministicSignals
       );
+    }
+
+    if (
+      analysisOutput.architecture.nodes.length === 0 &&
+      codeFiles.length <= 2
+    ) {
+      await updateProject(projectId, { status: 'failed' });
+      return {
+        success: false,
+        error: `Could not generate architecture. The repository may contain mostly unsupported file types. Supported: ${INCLUDED_EXTENSIONS_LIST.join(', ')}`,
+      };
     }
 
     const lensArtifacts = generateBusinessLensArtifacts({
