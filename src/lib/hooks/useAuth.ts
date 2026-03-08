@@ -28,13 +28,32 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+    let cancelled = false;
+
+    const initializeAuthState = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json();
+        if (!cancelled) {
+          setState({ user: data.user, loading: false });
+        }
+      } catch {
+        if (!cancelled) {
+          setState({ user: null, loading: false });
+        }
+      }
+    };
+
+    void initializeAuthState();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Refetch user data when window gains focus (handles login in same tab)
   useEffect(() => {
     const handleFocus = () => {
-      fetchUser();
+      void fetchUser();
     };
 
     window.addEventListener('focus', handleFocus);
@@ -45,7 +64,7 @@ export function useAuth() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetchUser();
+        void fetchUser();
       }
     }, 2000);
 

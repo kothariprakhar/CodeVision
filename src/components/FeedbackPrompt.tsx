@@ -13,6 +13,27 @@ export default function FeedbackPrompt({ onOpenFeedback }: FeedbackPromptProps) 
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
 
+  const handleDismiss = () => {
+    setIsAnimatingOut(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('feedback-prompt-dismissed', 'true');
+      }
+    }, 300); // Match animation duration
+  };
+
+  const handleGiveFeedback = () => {
+    setIsAnimatingOut(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('feedback-prompt-dismissed', 'true');
+      }
+      onOpenFeedback();
+    }, 300); // Match animation duration
+  };
+
   useEffect(() => {
     // Check if running in browser
     if (typeof window === 'undefined') return;
@@ -39,27 +60,6 @@ export default function FeedbackPrompt({ onOpenFeedback }: FeedbackPromptProps) 
       clearTimeout(hideTimer);
     };
   }, []);
-
-  const handleDismiss = () => {
-    setIsAnimatingOut(true);
-    setTimeout(() => {
-      setIsVisible(false);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('feedback-prompt-dismissed', 'true');
-      }
-    }, 300); // Match animation duration
-  };
-
-  const handleGiveFeedback = () => {
-    setIsAnimatingOut(true);
-    setTimeout(() => {
-      setIsVisible(false);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('feedback-prompt-dismissed', 'true');
-      }
-      onOpenFeedback();
-    }, 300); // Match animation duration
-  };
 
   if (!isVisible) return null;
 
@@ -93,7 +93,7 @@ export default function FeedbackPrompt({ onOpenFeedback }: FeedbackPromptProps) 
 
             {/* Title */}
             <div>
-              <h3 className="text-white font-semibold text-base">We'd love your feedback</h3>
+              <h3 className="text-white font-semibold text-base">We&apos;d love your feedback</h3>
               <p className="text-gray-400 text-sm mt-0.5">
                 Help us improve your experience
               </p>

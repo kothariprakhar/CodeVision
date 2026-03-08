@@ -3,6 +3,37 @@ import { getProjectAnalysis, getAnalysisById } from '@/lib/repositories/analysis
 import { getProject } from '@/lib/repositories/projects';
 import { getUserFromRequest } from '@/lib/auth';
 
+function extractRepoMetadata(rawResponse: string): {
+  stars?: number;
+  primary_language?: string | null;
+  contributors_count?: number;
+} | null {
+  if (!rawResponse) return null;
+  try {
+    const parsed = JSON.parse(rawResponse) as Record<string, unknown>;
+    const deterministic = parsed.deterministic_signals;
+    if (!deterministic || typeof deterministic !== 'object' || Array.isArray(deterministic)) {
+      return null;
+    }
+    const repoMeta = (deterministic as Record<string, unknown>).repo_metadata;
+    if (!repoMeta || typeof repoMeta !== 'object' || Array.isArray(repoMeta)) {
+      return null;
+    }
+    const record = repoMeta as Record<string, unknown>;
+    return {
+      stars: typeof record.stars === 'number' ? record.stars : undefined,
+      primary_language:
+        typeof record.primary_language === 'string'
+          ? record.primary_language
+          : (record.primary_language === null ? null : undefined),
+      contributors_count:
+        typeof record.contributors_count === 'number' ? record.contributors_count : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -52,6 +83,7 @@ export async function GET(
 
     // Architecture is already an object (with fallback for null/undefined)
     const architecture = analysis.architecture || { nodes: [], edges: [] };
+    const repoMetadata = extractRepoMetadata(analysis.raw_response);
 
     return NextResponse.json({
       id: analysis.id,
@@ -62,9 +94,10 @@ export async function GET(
       capability_graph: analysis.capability_graph || null,
       journey_graph: analysis.journey_graph || null,
       quality_report: analysis.quality_report || null,
+      repo_metadata: repoMetadata,
       analyzed_at: analysis.analyzed_at,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to fetch analysis' },
       { status: 500 }

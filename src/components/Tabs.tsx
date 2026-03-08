@@ -13,12 +13,12 @@ interface TabsProps {
 
 export default function Tabs({ tabs, activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex border-b border-white/10">
+    <div className="flex overflow-x-auto border-b border-white/10">
       {tabs.map(tab => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
-          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+          className={`shrink-0 px-4 py-2 text-sm font-medium transition-colors relative ${
             activeTab === tab.id
               ? 'text-purple-400'
               : 'text-gray-400 hover:text-gray-300'

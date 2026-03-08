@@ -33,7 +33,7 @@ export default function ProjectDetailsStep() {
     <div className="max-w-2xl mx-auto">
       <h2 className="text-2xl font-bold text-white mb-2">Project Details</h2>
       <p className="text-gray-400 mb-8">
-        Let's start by giving your project a name and description.
+        Let&apos;s start by giving your project a name and description.
       </p>
 
       <div className="glass rounded-xl p-8">

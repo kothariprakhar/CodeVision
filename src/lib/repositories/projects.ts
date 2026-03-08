@@ -55,7 +55,12 @@ export async function getProjectsByUser(userId: string): Promise<Project[]> {
 }
 
 export async function updateProject(id: string, input: UpdateProjectInput): Promise<Project> {
-  const updates: any = {
+  const updates: {
+    updated_at: string;
+    name?: string;
+    description?: string;
+    status?: ProjectStatus;
+  } = {
     updated_at: new Date().toISOString(),
   };
 
