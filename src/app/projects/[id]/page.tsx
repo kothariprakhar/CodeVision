@@ -112,6 +112,7 @@ export default function ProjectDetail() {
   const [exporting, setExporting] = useState<'pdf' | 'slides' | null>(null);
   const [founderMode, setFounderMode] = useState(true);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [qaExpanded, setQaExpanded] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchProject = useCallback(async () => {
@@ -483,7 +484,6 @@ export default function ProjectDetail() {
     { id: 'journeys', label: 'Business Flows' },
     { id: 'techstack', label: 'Tech Stack' },
     { id: 'risks', label: 'Risks' },
-    { id: 'qa', label: 'Q&A' },
   ];
 
   return (
@@ -651,7 +651,7 @@ export default function ProjectDetail() {
           </div>
         </aside>
 
-        <div>
+        <div className="min-w-0">
       <div className="glass-refined rounded-2xl mb-6 overflow-hidden">
         <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
@@ -735,26 +735,6 @@ export default function ProjectDetail() {
             </>
           )}
 
-          {activeTab === 'qa' && (
-            <>
-              {analysis && selectedVersion ? (
-                <QAChat
-                  analysisId={selectedVersion}
-                  founderMode={founderMode}
-                  onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
-                  onOpenArchitecture={() => setActiveTab('architecture')}
-                />
-              ) : (
-                <div className="text-center text-gray-500 py-12">
-                  <p className="font-medium text-gray-400">Q&A not available yet</p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Run analysis first to unlock conversational repository questions.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
           {activeTab === 'risks' && (
             <>
               {analysis && selectedVersion ? (
@@ -774,6 +754,35 @@ export default function ProjectDetail() {
             </>
           )}
         </div>
+
+        {analysis && selectedVersion && (
+          <div className="border-t border-white/10">
+            <button
+              onClick={() => setQaExpanded(value => !value)}
+              className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
+            >
+              <span className="flex items-center gap-2">💬 Ask about this repository</span>
+              <svg
+                className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {qaExpanded && (
+              <div className="px-6 pb-6">
+                <QAChat
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
+                  onOpenArchitecture={() => setActiveTab('architecture')}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>
       </div>

@@ -27,6 +27,8 @@ export default function Home() {
   const [loadingProjects, setLoadingProjects] = useState(true);
 
   useEffect(() => {
+    if (authLoading) return;
+
     if (!user) {
       setLoadingProjects(false);
       return;
@@ -46,7 +48,7 @@ export default function Home() {
     }
 
     fetchProjects();
-  }, [user]);
+  }, [user, authLoading]);
 
   const deleteProject = async (id: string): Promise<void> => {
     if (!confirm('Delete this project?')) return;
@@ -60,8 +62,20 @@ export default function Home() {
 
   if (authLoading || loadingProjects) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-indigo-400" />
+      <div className="space-y-8">
+        <section className="glass-refined rounded-2xl p-6">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-white/10" />
+          <div className="mt-2 h-4 w-72 animate-pulse rounded bg-white/5" />
+        </section>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="glass-refined space-y-3 rounded-2xl p-5">
+              <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
+              <div className="h-3 w-48 animate-pulse rounded bg-white/5" />
+              <div className="h-3 w-64 animate-pulse rounded bg-white/5" />
+            </div>
+          ))}
+        </section>
       </div>
     );
   }

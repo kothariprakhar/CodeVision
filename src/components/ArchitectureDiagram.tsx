@@ -505,7 +505,7 @@ export default function ArchitectureDiagram({
         </div>
       </div>
 
-      <div>
+      <div className="overflow-hidden">
         <div
           className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
             isFullscreen ? 'h-[calc(100vh-80px)]' : 'h-[620px]'
