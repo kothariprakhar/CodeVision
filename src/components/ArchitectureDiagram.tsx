@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { simplifyForFounder } from '@/lib/utils/founder-language';
+import type { BusinessFlow } from './BusinessFlowView';
+import ParticleSystem from './diagram/ParticleSystem';
+import FlowControlBar, { type FlowScenario } from './diagram/FlowControlBar';
 
 interface ArchitectureNode {
   id: string;
@@ -31,6 +34,7 @@ interface ArchitectureDiagramProps {
   highlightedNodeId?: string | null;
   founderMode?: boolean;
   founderDescriptions?: Record<string, string>;
+  flows?: BusinessFlow[];
 }
 
 interface RenderNode {
@@ -327,24 +331,82 @@ function businessAnalogy(kind: DiagramNodeKind): string {
   return 'operational team executing a key workflow';
 }
 
+function buildScenarios(flows: BusinessFlow[], edges: RenderEdge[]): FlowScenario[] {
+  const edgeMap = new Map<string, RenderEdge[]>();
+  edges.forEach(edge => {
+    const key = `${edge.from}->${edge.to}`;
+    if (!edgeMap.has(key)) edgeMap.set(key, []);
+    edgeMap.get(key)?.push(edge);
+  });
+
+  return flows
+    .filter(flow => flow.steps.length > 1)
+    .map(flow => {
+      const moduleSequence = flow.steps
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map(step => step.moduleId);
+
+      const stepEdges: string[][] = [];
+      for (let i = 0; i < moduleSequence.length - 1; i += 1) {
+        const key = `${moduleSequence[i]}->${moduleSequence[i + 1]}`;
+        const matching = (edgeMap.get(key) || []).map(edge => edge.id);
+        stepEdges.push(matching);
+      }
+
+      const involvedEdges = Array.from(new Set(stepEdges.flat()));
+
+      return {
+        id: flow.id,
+        name: flow.title,
+        trigger: flow.trigger,
+        steps: flow.steps
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map(step => ({
+            moduleId: step.moduleId,
+            label: `${step.actor} ${step.action}`,
+            duration: 1800,
+          })),
+        involvedEdges,
+        stepEdges,
+      };
+    });
+}
+
 export default function ArchitectureDiagram({
   architecture,
   highlightedNodeId,
   founderMode = false,
   founderDescriptions,
+  flows = [],
 }: ArchitectureDiagramProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [animMode, setAnimMode] = useState<'off' | 'ambient' | 'scenario'>('off');
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [animSpeed, setAnimSpeed] = useState(1);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [stepProgress, setStepProgress] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [activeDomains, setActiveDomains] = useState<Set<Domain>>(
     new Set(['auth', 'data', 'payments', 'comms', 'core', 'infra'])
   );
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const stepStartRef = useRef<number | null>(null);
 
   const detailed = useMemo(() => buildDetailedLayout(architecture), [architecture]);
   const grouped = useMemo(() => buildGroupedLayout(architecture), [architecture]);
+  const scenarios = useMemo(() => buildScenarios(flows, detailed.edges), [flows, detailed.edges]);
+  const activeScenario = useMemo(
+    () => scenarios.find(scenario => scenario.id === activeScenarioId) || null,
+    [scenarios, activeScenarioId]
+  );
 
-  const semanticMode = zoomLevel < 0.78 ? 'grouped' : 'detailed';
+  const semanticMode = animMode === 'scenario' ? 'detailed' : zoomLevel < 0.78 ? 'grouped' : 'detailed';
   const baseGraph = semanticMode === 'grouped' ? grouped : detailed;
 
   const renderedNodes = useMemo(
@@ -361,6 +423,25 @@ export default function ArchitectureDiagram({
     () => baseGraph.edges.filter(edge => renderedNodeIds.has(edge.from) && renderedNodeIds.has(edge.to)),
     [baseGraph.edges, renderedNodeIds]
   );
+  const renderedNodeMap = useMemo(
+    () => new Map(renderedNodes.map(node => [node.id, node])),
+    [renderedNodes]
+  );
+  const edgePaths = useMemo(() => {
+    const map = new Map<string, { path: string }>();
+    renderedEdges.forEach(edge => {
+      const source = renderedNodeMap.get(edge.from);
+      const target = renderedNodeMap.get(edge.to);
+      if (!source || !target) return;
+      const sx = source.x + source.width / 2;
+      const sy = source.y + source.height / 2;
+      const tx = target.x + target.width / 2;
+      const ty = target.y + target.height / 2;
+      const midY = sy + (ty - sy) / 2;
+      map.set(edge.id, { path: `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}` });
+    });
+    return map;
+  }, [renderedEdges, renderedNodeMap]);
 
   const focusNodeId = hoveredNodeId || highlightedNodeId || null;
 
@@ -405,6 +486,85 @@ export default function ArchitectureDiagram({
     };
   }, [selectedNode, zoomLevel, baseGraph.width, baseGraph.height]);
 
+  const normalizedStepIndex = useMemo(() => {
+    if (!activeScenario || activeScenario.steps.length === 0) return 0;
+    return currentStepIndex % activeScenario.steps.length;
+  }, [activeScenario, currentStepIndex]);
+
+  const scenarioActiveEdgeIds = useMemo(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating) return new Set<string>();
+    const upToStep = activeScenario.stepEdges.slice(0, Math.max(0, normalizedStepIndex + 1));
+    return new Set(upToStep.flat());
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex]);
+
+  const activeNodeIds = useMemo(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating) return new Set<string>();
+    const current = activeScenario.steps[normalizedStepIndex];
+    return current ? new Set([current.moduleId]) : new Set<string>();
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex]);
+
+  const currentStep = useMemo(() => {
+    if (!activeScenario) return null;
+    if (activeScenario.steps.length === 0) return null;
+    return activeScenario.steps[normalizedStepIndex] || null;
+  }, [activeScenario, normalizedStepIndex]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyPreference = () => {
+      const reduced = mediaQuery.matches;
+      setPrefersReducedMotion(reduced);
+      if (reduced) {
+        setAnimMode('off');
+        setIsAnimating(false);
+      }
+    };
+
+    applyPreference();
+    mediaQuery.addEventListener('change', applyPreference);
+    return () => mediaQuery.removeEventListener('change', applyPreference);
+  }, []);
+
+  useEffect(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating || prefersReducedMotion) {
+      stepStartRef.current = null;
+      return;
+    }
+
+    let frameId = 0;
+    const tick = (timestamp: number) => {
+      if (!activeScenario || activeScenario.steps.length === 0) return;
+      if (stepStartRef.current === null) {
+        stepStartRef.current = timestamp;
+      }
+
+      const safeIndex = Math.min(normalizedStepIndex, activeScenario.steps.length - 1);
+      const step = activeScenario.steps[safeIndex];
+      const duration = Math.max(450, step.duration / animSpeed);
+      const elapsed = timestamp - stepStartRef.current;
+      const progress = Math.min(1, elapsed / duration);
+      setStepProgress(progress);
+
+      if (elapsed >= duration) {
+        setCurrentStepIndex(prev => (prev + 1) % activeScenario.steps.length);
+        stepStartRef.current = timestamp;
+      }
+
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex, animSpeed, prefersReducedMotion]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || animMode === 'off') return;
+    if (isAnimating) svg.unpauseAnimations();
+    else svg.pauseAnimations();
+  }, [animMode, isAnimating, renderedEdges.length]);
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -438,6 +598,36 @@ export default function ArchitectureDiagram({
       if (next.size === 0) return new Set(['auth', 'data', 'payments', 'comms', 'core', 'infra']);
       return next;
     });
+  };
+
+  const handleAnimationToggle = () => {
+    if (prefersReducedMotion) return;
+    if (animMode === 'off') {
+      setAnimMode(activeScenarioId ? 'scenario' : 'ambient');
+      setIsAnimating(true);
+      return;
+    }
+    setIsAnimating(value => !value);
+  };
+
+  const handleScenarioSelect = (id: string | null) => {
+    setActiveScenarioId(id);
+    setCurrentStepIndex(0);
+    setStepProgress(0);
+    stepStartRef.current = null;
+
+    if (prefersReducedMotion) return;
+    if (id) {
+      setAnimMode('scenario');
+      setIsAnimating(true);
+      return;
+    }
+    setAnimMode(isAnimating ? 'ambient' : 'off');
+  };
+
+  const handleSpeedChange = (speed: number) => {
+    setAnimSpeed(speed);
+    stepStartRef.current = null;
   };
 
   if (!architecture || architecture.nodes.length === 0) {
@@ -505,6 +695,42 @@ export default function ArchitectureDiagram({
         </div>
       </div>
 
+      <FlowControlBar
+        isAnimating={isAnimating}
+        mode={animMode}
+        scenarios={scenarios}
+        activeScenarioId={activeScenarioId}
+        speed={animSpeed}
+        disabled={prefersReducedMotion}
+        currentStep={currentStep && activeScenario
+          ? {
+            index: normalizedStepIndex,
+            total: activeScenario.steps.length,
+            label: currentStep.label,
+          }
+          : undefined}
+        onToggle={handleAnimationToggle}
+        onSelectScenario={handleScenarioSelect}
+        onSpeedChange={handleSpeedChange}
+      />
+
+      {animMode === 'scenario' && isAnimating && currentStep && activeScenario && (
+        <div className="rounded-xl border border-white/10 bg-[#0b1120]/85 px-4 py-3">
+          <div className="text-xs font-medium text-gray-200">
+            Step {normalizedStepIndex + 1}/{activeScenario.steps.length}: {currentStep.label}
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full transition-[width] duration-150 ease-out"
+              style={{
+                width: `${Math.round(stepProgress * 100)}%`,
+                background: DOMAIN_COLORS[renderedNodeMap.get(currentStep.moduleId)?.domain || 'core'],
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden">
         <div
           className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
@@ -529,6 +755,7 @@ export default function ArchitectureDiagram({
               }}
             >
               <svg
+                ref={svgRef}
                 width={baseGraph.width}
                 height={baseGraph.height}
                 className="absolute inset-0"
@@ -542,9 +769,22 @@ export default function ArchitectureDiagram({
                 <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
                 {renderedEdges.map(edge => {
-                  const source = renderedNodes.find(node => node.id === edge.from);
-                  const target = renderedNodes.find(node => node.id === edge.to);
+                  const source = renderedNodeMap.get(edge.from);
+                  const target = renderedNodeMap.get(edge.to);
                   if (!source || !target) return null;
+                  const edgePath = edgePaths.get(edge.id);
+                  if (!edgePath) return null;
+
+                  const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
+                  let style = edgeStyle(edge, isActive);
+                  const isScenarioPlaying = animMode === 'scenario' && isAnimating && activeScenario;
+                  if (isScenarioPlaying) {
+                    if (scenarioActiveEdgeIds.has(edge.id)) {
+                      style = { ...style, width: Math.max(style.width, 4), opacity: 1 };
+                    } else {
+                      style = { ...style, width: Math.max(1, style.width * 0.7), opacity: 0.15 };
+                    }
+                  }
 
                   const sx = source.x + source.width / 2;
                   const sy = source.y + source.height / 2;
@@ -552,14 +792,10 @@ export default function ArchitectureDiagram({
                   const ty = target.y + target.height / 2;
                   const midY = sy + (ty - sy) / 2;
 
-                  const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
-                  const style = edgeStyle(edge, isActive);
-                  const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
-
                   return (
                     <g key={edge.id}>
                       <path
-                        d={path}
+                        d={edgePath.path}
                         fill="none"
                         stroke={style.stroke}
                         strokeWidth={style.width}
@@ -582,6 +818,20 @@ export default function ArchitectureDiagram({
                   );
                 })}
 
+                {animMode !== 'off' && (
+                  <ParticleSystem
+                    edges={renderedEdges}
+                    nodes={renderedNodes}
+                    edgePaths={edgePaths}
+                    mode={animMode}
+                    activeScenario={activeScenario}
+                    speed={animSpeed}
+                    isAnimating={isAnimating}
+                    activeEdgeIds={scenarioActiveEdgeIds}
+                    domainColors={DOMAIN_COLORS}
+                  />
+                )}
+
                 <defs>
                   <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                     <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
@@ -591,8 +841,27 @@ export default function ArchitectureDiagram({
 
               {renderedNodes.map(node => {
                 const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
+                const isScenarioPlaying = animMode === 'scenario' && isAnimating && activeScenario;
+                const isScenarioDimmed = isScenarioPlaying && !activeNodeIds.has(node.id);
                 const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
+                const isScenarioActiveNode = activeNodeIds.has(node.id);
                 const borderColor = DOMAIN_COLORS[node.domain];
+                const nodeStyle: CSSProperties & Record<string, string | number> = {
+                  left: node.x,
+                  top: node.y,
+                  width: node.width,
+                  height: node.height,
+                  borderColor: `${borderColor}B3`,
+                  background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
+                  boxShadow: `0 0 0 1px ${borderColor}24`,
+                  opacity: isScenarioDimmed ? 0.2 : (isDimmed ? 0.26 : 1),
+                };
+                if (isScenarioActiveNode) {
+                  nodeStyle['--pulse-color'] = DOMAIN_COLORS[node.domain];
+                  nodeStyle.borderColor = DOMAIN_COLORS[node.domain];
+                  nodeStyle.boxShadow = `0 0 24px 8px ${DOMAIN_COLORS[node.domain]}40`;
+                  nodeStyle.transform = 'scale(1.02)';
+                }
                 return (
                   <button
                     key={node.id}
@@ -604,17 +873,8 @@ export default function ArchitectureDiagram({
                     }}
                     className={`absolute rounded-xl border text-left transition-all ${
                       isSelected ? 'ring-2 ring-white/65' : ''
-                    }`}
-                    style={{
-                      left: node.x,
-                      top: node.y,
-                      width: node.width,
-                      height: node.height,
-                      borderColor: `${borderColor}B3`,
-                      background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
-                      boxShadow: `0 0 0 1px ${borderColor}24`,
-                      opacity: isDimmed ? 0.26 : 1,
-                    }}
+                    } ${isScenarioActiveNode ? 'animate-node-pulse' : ''}`}
+                    style={nodeStyle}
                   >
                     <div className="p-3">
                       <div className="text-[11px] uppercase tracking-wide text-gray-400">
