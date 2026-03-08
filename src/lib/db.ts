@@ -247,6 +247,7 @@ export interface JourneyStep {
     | 'exit'
     | 'unknown';
   description: string;
+  data_passed?: string;
   business_outcome: string;
   friction_risk: 'low' | 'medium' | 'high' | 'critical';
   dropoff_likelihood?: number;
@@ -268,6 +269,13 @@ export interface Journey {
 export interface JourneyGraph {
   summary: string;
   journeys: Journey[];
+}
+
+export interface ArchitectureDomain {
+  name: string;
+  color_hint: string;
+  modules: string[];
+  purpose: string;
 }
 
 export interface QualityReport {
@@ -293,6 +301,7 @@ export interface FounderNarrative {
 
 export interface BusinessContext {
   problem_statement: string;
+  architecture_domains: ArchitectureDomain[];
   value_features: Array<{
     name: string;
     description: string;

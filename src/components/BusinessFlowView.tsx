@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { simplifyForFounder } from '@/lib/utils/founder-language';
 
-type Domain = 'auth' | 'data' | 'payments' | 'comms' | 'core' | 'infra';
-
 export interface BusinessFlow {
   id: string;
   title: string;
@@ -15,8 +13,9 @@ export interface BusinessFlow {
     actor: string;
     action: string;
     detail: string;
+    data_passed?: string;
     moduleId: string;
-    domain: Domain;
+    domain: string;
   }>;
   outcome: string;
   involvedModules: string[];
@@ -45,7 +44,7 @@ interface BusinessFlowViewProps {
   }>;
 }
 
-const DOMAIN_COLORS: Record<Domain, string> = {
+const DOMAIN_COLORS: Record<string, string> = {
   auth: 'hsl(220, 80%, 60%)',
   data: 'hsl(160, 70%, 45%)',
   payments: 'hsl(45, 90%, 55%)',
@@ -53,6 +52,17 @@ const DOMAIN_COLORS: Record<Domain, string> = {
   core: 'hsl(340, 75%, 55%)',
   infra: 'hsl(200, 20%, 50%)',
 };
+
+function colorForDomain(domain: string): string {
+  if (DOMAIN_COLORS[domain]) return DOMAIN_COLORS[domain];
+  let hash = 0;
+  for (let i = 0; i < domain.length; i += 1) {
+    hash = (hash << 5) - hash + domain.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 68%, 58%)`;
+}
 
 const ICON_MAP: Record<string, string> = {
   'credit-card': '💳',
@@ -207,7 +217,7 @@ export default function BusinessFlowView({
                 const id = stepKey(selectedFlow.id, step.order);
                 const active = activeStepId === id;
                 const alignRight = index % 2 === 1;
-                const domainColor = DOMAIN_COLORS[step.domain];
+                const domainColor = colorForDomain(step.domain);
                 return (
                   <div
                     key={id}
