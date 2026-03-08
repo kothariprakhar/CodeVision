@@ -346,6 +346,7 @@ export async function analyzeProject(
 
     const businessContext = fullAnalysisResult
       ? {
+        architecture_domains: fullAnalysisResult.business_analysis.architecture_domains,
         problem_statement: fullAnalysisResult.business_analysis.problem_statement,
         value_features: fullAnalysisResult.business_analysis.value_features,
         data_usage: fullAnalysisResult.business_analysis.data_usage,

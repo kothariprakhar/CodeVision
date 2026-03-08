@@ -3,13 +3,11 @@
 import { useMemo } from 'react';
 import type { FlowScenario } from './FlowControlBar';
 
-type Domain = 'auth' | 'data' | 'payments' | 'comms' | 'core' | 'infra';
-
 type EdgeKind = 'imports' | 'calls' | 'stores' | 'renders';
 
 interface RenderNode {
   id: string;
-  domain: Domain;
+  domain: string;
 }
 
 interface RenderEdge {
@@ -29,7 +27,7 @@ interface ParticleSystemProps {
   speed: number;
   isAnimating: boolean;
   activeEdgeIds?: Set<string>;
-  domainColors: Record<Domain, string>;
+  domainColors: Record<string, string>;
 }
 
 interface Particle {
@@ -84,7 +82,7 @@ export default function ParticleSystem({
       if (!edgePaths.has(edge.id)) return;
 
       const domain = nodeDomain.get(edge.from) || 'core';
-      const color = domainColors[domain];
+      const color = domainColors[domain] || 'hsl(220, 80%, 60%)';
       const duration = durationForEdge(edge.type, mode, speed);
       const baseSize = sizeForEdge(edge.weight);
       const count = mode === 'scenario'
@@ -122,6 +120,12 @@ export default function ParticleSystem({
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
+        {particles.map((particle) => (
+          <linearGradient key={`trail-${particle.id}`} id={`trail-${particle.id}`}>
+            <stop offset="0%" stopColor={particle.color} stopOpacity={0.85} />
+            <stop offset="100%" stopColor={particle.color} stopOpacity={0} />
+          </linearGradient>
+        ))}
       </defs>
 
       {particles.map(particle => {
@@ -130,10 +134,11 @@ export default function ParticleSystem({
 
         return (
           <g key={particle.id}>
-            <circle
-              r={Math.max(1.5, particle.size * 1.9)}
-              fill={particle.color}
-              opacity={particle.opacity * 0.25}
+            <ellipse
+              rx={Math.max(1.8, particle.size * 2.4)}
+              ry={Math.max(1.1, particle.size * 0.7)}
+              fill={`url(#trail-${particle.id})`}
+              opacity={particle.opacity}
               filter="url(#particle-glow)"
             >
               <animateMotion
@@ -141,19 +146,17 @@ export default function ParticleSystem({
                 begin={`${particle.delay}s`}
                 repeatCount="indefinite"
                 path={edge.path}
+                rotate="auto"
               />
-            </circle>
+            </ellipse>
 
-            <circle
-              r={Math.max(1.4, particle.size)}
-              fill={particle.color}
-              opacity={particle.opacity}
-            >
+            <circle r={Math.max(1.4, particle.size)} fill={particle.color} opacity={particle.opacity}>
               <animateMotion
                 dur={`${particle.duration}s`}
                 begin={`${particle.delay}s`}
                 repeatCount="indefinite"
                 path={edge.path}
+                rotate="auto"
               />
             </circle>
 

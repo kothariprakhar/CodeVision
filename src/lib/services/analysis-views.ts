@@ -8,7 +8,7 @@ export interface DiagramNodeView {
   id: string;
   label: string;
   type: 'service' | 'database' | 'external' | 'queue';
-  domain: 'auth' | 'data' | 'payments' | 'comms' | 'core' | 'infra';
+  domain: string;
   description: string;
   files: string[];
 }
@@ -32,8 +32,9 @@ export interface BusinessFlow {
     actor: string;
     action: string;
     detail: string;
+    data_passed?: string;
     moduleId: string;
-    domain: 'auth' | 'data' | 'payments' | 'comms' | 'core' | 'infra';
+    domain: string;
   }>;
   outcome: string;
   involvedModules: string[];
@@ -53,6 +54,26 @@ function inferDomain(text: string): DiagramNodeView['domain'] {
   return 'core';
 }
 
+function normalizeModuleKey(value: string): string {
+  return value.toLowerCase().trim();
+}
+
+function getArchitectureDomainLookup(analysis: AnalysisResult): {
+  byModule: Map<string, string>;
+} {
+  const domains = analysis.business_context?.architecture_domains || [];
+  const byModule = new Map<string, string>();
+
+  domains.forEach((domain) => {
+    domain.modules.forEach((moduleName) => {
+      const key = normalizeModuleKey(moduleName);
+      if (key) byModule.set(key, domain.name);
+    });
+  });
+
+  return { byModule };
+}
+
 function mapNodeType(type: string, name: string): DiagramNodeView['type'] {
   const joined = `${type} ${name}`.toLowerCase();
   if (/(database|db|storage|redis|postgres|mysql|mongo)/.test(joined)) return 'database';
@@ -69,8 +90,12 @@ function mapEdgeType(type: string, label: string): DiagramEdgeView['type'] {
 }
 
 export function buildDiagramView(analysis: AnalysisResult): { nodes: DiagramNodeView[]; edges: DiagramEdgeView[] } {
+  const domainLookup = getArchitectureDomainLookup(analysis);
+
   const nodes: DiagramNodeView[] = (analysis.architecture?.nodes || []).map(node => {
-    const domain = inferDomain(`${node.name} ${node.description} ${(node.files || []).join(' ')}`);
+    const domain = domainLookup.byModule.get(normalizeModuleKey(node.id))
+      || domainLookup.byModule.get(normalizeModuleKey(node.name))
+      || inferDomain(`${node.name} ${node.description} ${(node.files || []).join(' ')}`);
     return {
       id: node.id,
       label: node.name,
@@ -108,20 +133,41 @@ export function buildBusinessFlows(analysis: AnalysisResult): BusinessFlow[] {
     return [];
   }
 
+  let pass3Journeys: Array<{ title?: string; steps?: Array<{ data_passed?: string }> }> = [];
+  try {
+    const parsed = JSON.parse(analysis.raw_response) as Record<string, unknown>;
+    const pass3 = parsed.pass3 as Record<string, unknown> | undefined;
+    const rawJourneys = pass3?.user_journeys;
+    if (Array.isArray(rawJourneys)) {
+      pass3Journeys = rawJourneys as Array<{ title?: string; steps?: Array<{ data_passed?: string }> }>;
+    }
+  } catch {
+    pass3Journeys = [];
+  }
+
+  const domainLookup = getArchitectureDomainLookup(analysis);
   const nodeDomains = new Map(
     (analysis.architecture?.nodes || []).map(node => [
       node.id,
-      inferDomain(`${node.name} ${node.description} ${(node.files || []).join(' ')}`),
+      domainLookup.byModule.get(normalizeModuleKey(node.id))
+      || domainLookup.byModule.get(normalizeModuleKey(node.name))
+      || inferDomain(`${node.name} ${node.description} ${(node.files || []).join(' ')}`),
     ])
   );
 
-  return journeyGraph.journeys.slice(0, 5).map(journey => {
+  return journeyGraph.journeys.slice(0, 5).map((journey, journeyIndex) => {
+    const matchingPass3Journey = pass3Journeys[journeyIndex];
     const steps = journey.steps
       .slice()
       .sort((a, b) => a.order - b.order)
-      .map(step => {
+      .map((step, stepIndex) => {
         const moduleId = step.systems_touched[0] || step.id;
-        const domain = nodeDomains.get(moduleId) || inferDomain(`${moduleId} ${step.name} ${step.description}`);
+        const domain = nodeDomains.get(moduleId)
+          || domainLookup.byModule.get(normalizeModuleKey(moduleId))
+          || inferDomain(`${moduleId} ${step.name} ${step.description}`);
+        const dataPassed = typeof (step as { data_passed?: unknown }).data_passed === 'string'
+          ? (step as { data_passed?: string }).data_passed
+          : matchingPass3Journey?.steps?.[stepIndex]?.data_passed || '';
         return {
           order: step.order,
           icon: step.step_type === 'payment'
@@ -138,6 +184,7 @@ export function buildBusinessFlows(analysis: AnalysisResult): BusinessFlow[] {
           actor: step.step_type === 'entry' ? 'The user' : 'The system',
           action: step.name,
           detail: step.description || step.business_outcome || '',
+          data_passed: dataPassed,
           moduleId,
           domain,
         };

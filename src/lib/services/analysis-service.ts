@@ -65,6 +65,7 @@ const PASS3JourneyStepSchema = z.object({
   action: z.string().min(1),
   description: z.string().min(1),
   module_name: z.string().min(1),
+  data_passed: z.string().default(''),
 });
 
 const PASS3JourneySchema = z.object({
@@ -94,8 +95,16 @@ const PASS3ExternalDepSchema = z.object({
   what_breaks_without_it: z.string().min(1),
 });
 
+const PASS3ArchitectureDomainSchema = z.object({
+  name: z.string().min(1),
+  color_hint: z.string().min(1),
+  modules: z.array(z.string()).default([]),
+  purpose: z.string().min(1),
+});
+
 const PASS3BusinessAnalysisSchema = z.object({
   problem_statement: z.string().min(1),
+  architecture_domains: z.array(PASS3ArchitectureDomainSchema).max(6).default([]),
   user_journeys: z.array(PASS3JourneySchema).default([]),
   value_features: z.array(PASS3ValueFeatureSchema).default([]),
   data_usage: z.array(PASS3DataUsageSchema).default([]),
@@ -956,6 +965,8 @@ export async function runFullAnalysis(
    CRITICAL: each step's "module_name" MUST be one of these exact names:
    ${Object.keys(moduleSummaries).join(', ')}
    Each journey needs 2-6 steps showing how data/control flows between modules.
+   For every step, include "data_passed" describing what moves to the next step
+   (example: "JWT token", "parsed document", "order payload").
 
 3) value_features: what makes this product valuable — include which modules deliver each feature
 
@@ -966,11 +977,26 @@ export async function runFullAnalysis(
    - why_needed: business reason
    - what_breaks_without_it: consequence of removing it
 
+6) architecture_domains: group modules into 2-6 business domains.
+   For each domain include:
+   - name
+   - color_hint (like blue, green, purple, orange)
+   - modules (must only use these module names: ${Object.keys(moduleSummaries).join(', ')})
+   - purpose (1 sentence business purpose)
+
 Write for a CEO who has never seen code. Use plain English.
 
 Output format:
 {
   "problem_statement": "...",
+  "architecture_domains": [
+    {
+      "name": "Content Processing",
+      "color_hint": "purple",
+      "modules": ["parser", "analyzer"],
+      "purpose": "Transforms uploads into structured business data"
+    }
+  ],
   "user_journeys": [
     {
       "title": "...",
@@ -980,7 +1006,8 @@ Output format:
         {
           "action": "...",
           "description": "...",
-          "module_name": "..."
+          "module_name": "...",
+          "data_passed": "..."
         }
       ]
     }

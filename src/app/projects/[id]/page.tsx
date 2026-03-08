@@ -12,7 +12,12 @@ import JourneyMap from '@/components/JourneyMap';
 import TechStackDashboard from '@/components/TechStackDashboard';
 import QAChat from '@/components/QAChat';
 import RiskPanel from '@/components/RiskPanel';
+import ViewSwitcher, { type DiagramView } from '@/components/diagram/ViewSwitcher';
+import MetroMapView from '@/components/diagram/MetroMapView';
+import StoryView from '@/components/diagram/StoryView';
+import LiveSystemView from '@/components/diagram/LiveSystemView';
 import type { BusinessFlow } from '@/components/BusinessFlowView';
+import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 interface Project {
@@ -39,38 +44,6 @@ interface Finding {
   evidence: string[];
 }
 
-interface ArchitectureVisualization {
-  nodes: Array<{
-    id: string;
-    name: string;
-    type: 'component' | 'service' | 'api' | 'database' | 'external' | 'ui';
-    complexity: 'low' | 'medium' | 'high';
-    description: string;
-    business_role?: string;
-    files: string[];
-  }>;
-  edges: Array<{
-    from: string;
-    to: string;
-    type: 'imports' | 'calls' | 'stores' | 'renders';
-    label?: string;
-    data_flow?: string;
-    trigger?: string;
-  }>;
-}
-
-interface NarrativeMode {
-  executive_summary: string;
-  how_it_works: string;
-  components: Array<{
-    name: string;
-    explanation: string;
-    business_analogy: string;
-  }>;
-  scale_assessment: string;
-  technology_choices: string[];
-}
-
 interface Analysis {
   id: string;
   summary: string;
@@ -95,28 +68,7 @@ interface Analysis {
     primary_language?: string | null;
     contributors_count?: number;
   } | null;
-  business_context?: {
-    problem_statement: string;
-    value_features: Array<{
-      name: string;
-      description: string;
-      business_impact: string;
-      modules_involved: string[];
-    }>;
-    data_usage: Array<{
-      data_type: string;
-      collected_from: string;
-      used_for: string;
-      stored_in: string;
-    }>;
-    external_deps: Array<{
-      name: string;
-      why_needed: string;
-      what_breaks_without_it: string;
-    }>;
-    founder_narrative: NarrativeMode;
-    technical_narrative: NarrativeMode;
-  } | null;
+  business_context?: BusinessContext | null;
   analyzed_at: string;
 }
 
@@ -153,6 +105,7 @@ export default function ProjectDetail() {
   const [founderMode, setFounderMode] = useState(true);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [qaExpanded, setQaExpanded] = useState(false);
+  const [diagramView, setDiagramView] = useState<DiagramView>('graph');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchProject = useCallback(async () => {
@@ -751,13 +704,50 @@ export default function ProjectDetail() {
 
               {/* Architecture Diagram */}
 	              {analysis?.architecture ? (
-	                <ArchitectureDiagram
-	                  architecture={analysis.architecture}
-	                  highlightedNodeId={highlightedModuleId}
-                    founderMode={founderMode}
-                    founderDescriptions={analysis.founder_content?.node_descriptions}
-                    flows={flows}
-	                />
+                  <div className="space-y-4">
+                    <ViewSwitcher activeView={diagramView} onViewChange={setDiagramView} />
+
+                    {diagramView === 'graph' && (
+                      <ArchitectureDiagram
+                        architecture={analysis.architecture}
+                        highlightedNodeId={highlightedModuleId}
+                        founderMode={founderMode}
+                        founderDescriptions={analysis.founder_content?.node_descriptions}
+                        architectureDomains={analysis.business_context?.architecture_domains}
+                      />
+                    )}
+
+                    {diagramView === 'metro' && (
+                      <MetroMapView
+                        architecture={analysis.architecture}
+                        flows={flows}
+                        founderMode={founderMode}
+                        businessContext={analysis.business_context}
+                        founderDescriptions={analysis.founder_content?.node_descriptions}
+                        architectureDomains={analysis.business_context?.architecture_domains}
+                      />
+                    )}
+
+                    {diagramView === 'story' && (
+                      <StoryView
+                        architecture={analysis.architecture}
+                        flows={flows}
+                        founderMode={founderMode}
+                        businessContext={analysis.business_context}
+                      />
+                    )}
+
+                    {diagramView === 'live' && (
+                      <LiveSystemView
+                        architecture={analysis.architecture}
+                        flows={flows}
+                        founderMode={founderMode}
+                        founderDescriptions={analysis.founder_content?.node_descriptions}
+                        businessContext={analysis.business_context}
+                        architectureDomains={analysis.business_context?.architecture_domains}
+                      />
+                    )}
+                  </div>
               ) : (
                 <div className="text-center text-gray-500 py-12">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
