@@ -34,6 +34,12 @@ interface RiskResponse {
 interface RiskPanelProps {
   analysisId: string;
   founderMode?: boolean;
+  founderRiskRewrites?: Array<{
+    original_title: string;
+    title: string;
+    impact: string;
+    why_it_matters: string;
+  }>;
 }
 
 function severityStyles(severity: RiskItem['severity']): string {
@@ -43,7 +49,11 @@ function severityStyles(severity: RiskItem['severity']): string {
   return 'border-blue-500/35 bg-blue-500/10 text-blue-100';
 }
 
-export default function RiskPanel({ analysisId, founderMode = false }: RiskPanelProps) {
+export default function RiskPanel({
+  analysisId,
+  founderMode = false,
+  founderRiskRewrites,
+}: RiskPanelProps) {
   const [data, setData] = useState<RiskResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -82,6 +92,22 @@ export default function RiskPanel({ analysisId, founderMode = false }: RiskPanel
     });
     return map;
   }, [data]);
+
+  const rewriteByOriginalTitle = useMemo(() => {
+    const map = new Map<string, {
+      title: string;
+      impact: string;
+      why_it_matters: string;
+    }>();
+    (founderRiskRewrites || []).forEach(rewrite => {
+      map.set(rewrite.original_title, {
+        title: rewrite.title,
+        impact: rewrite.impact,
+        why_it_matters: rewrite.why_it_matters,
+      });
+    });
+    return map;
+  }, [founderRiskRewrites]);
 
   if (loading) return <div className="text-sm text-gray-400">Loading risk assessment...</div>;
   if (error) return <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>;
@@ -145,6 +171,10 @@ export default function RiskPanel({ analysisId, founderMode = false }: RiskPanel
 
             {grouped[severity].map(risk => {
               const isExpanded = expanded.has(risk.id);
+              const rewrite = founderMode ? rewriteByOriginalTitle.get(risk.title) : undefined;
+              const displayTitle = rewrite?.title || risk.title;
+              const displayImpact = rewrite?.impact || risk.impact;
+              const displayWhyItMatters = rewrite?.why_it_matters || risk.why_it_matters;
               return (
                 <article key={risk.id} className={`rounded-xl border p-3 ${severityStyles(risk.severity)}`}>
                   <button className="flex w-full items-start justify-between gap-3 text-left" onClick={() => toggle(risk.id)}>
@@ -152,15 +182,15 @@ export default function RiskPanel({ analysisId, founderMode = false }: RiskPanel
                       <div className="text-xs uppercase tracking-wide opacity-80">
                         {risk.category} · {risk.source === 'static' ? 'deterministic check' : 'analysis narrative'}
                       </div>
-                      <h5 className="mt-1 text-sm font-semibold">{risk.title}</h5>
-                      <p className="mt-1 text-xs opacity-90">{simplifyForFounder(risk.impact, founderMode)}</p>
+                      <h5 className="mt-1 text-sm font-semibold">{displayTitle}</h5>
+                      <p className="mt-1 text-xs opacity-90">{simplifyForFounder(displayImpact, founderMode)}</p>
                     </div>
                     <span className="text-xs opacity-85">{isExpanded ? 'Hide' : 'Details'}</span>
                   </button>
 
                   {isExpanded && (
                     <div className="mt-3 space-y-2 border-t border-white/15 pt-3 text-xs">
-                      <p>{simplifyForFounder(risk.why_it_matters, founderMode)}</p>
+                      <p>{simplifyForFounder(displayWhyItMatters, founderMode)}</p>
                       <div className="flex flex-wrap gap-2">
                         <span className="rounded-full border border-white/20 bg-black/20 px-2 py-1">
                           Effort: {risk.estimated_effort_days} days

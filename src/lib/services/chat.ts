@@ -177,7 +177,8 @@ export async function chat(
   projectId: string,
   analysisId: string,
   message: string,
-  elementContext?: ElementContext
+  elementContext?: ElementContext,
+  founderMode: boolean = false
 ): Promise<ChatResponse> {
   const analysis = await getAnalysisById(analysisId);
   if (!analysis) {
@@ -232,6 +233,7 @@ Rules:
 - Mention module names when relevant.
 - If uncertain, say so explicitly.
 - Suggest 2-3 follow-up questions.
+- ${founderMode ? 'Use zero jargon. Explain everything in plain business language.' : 'Use light technical language only when necessary.'}
 - Return JSON only in this format:
 {
   "answer": "...",

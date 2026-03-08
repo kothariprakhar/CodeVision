@@ -75,6 +75,7 @@ export interface AnalysisResult {
   capability_graph?: CapabilityGraph | null;
   journey_graph?: JourneyGraph | null;
   quality_report?: QualityReport | null;
+  founder_content?: FounderContent | null;
   chat_history: ChatMessage[];
   raw_response: string;
   analyzed_at: string;
@@ -271,4 +272,37 @@ export interface QualityReport {
   missing_signals: string[];
   assumptions: string[];
   needs_manual_input: string[];
+}
+
+export interface FounderNarrative {
+  executive_summary: string;
+  how_it_works: string;
+  components: Array<{
+    name: string;
+    explanation: string;
+    business_analogy: string;
+  }>;
+  scale_assessment: string;
+  technology_choices: string[];
+}
+
+export interface FounderContent {
+  narrative: FounderNarrative;
+  node_descriptions: Record<string, string>;
+  finding_rewrites: Array<{
+    original_title: string;
+    title: string;
+    description: string;
+  }>;
+  journey_rewrites: Record<string, {
+    name: string;
+    goal: string;
+    step_descriptions: Record<string, string>;
+  }>;
+  risk_rewrites: Array<{
+    original_title: string;
+    title: string;
+    impact: string;
+    why_it_matters: string;
+  }>;
 }

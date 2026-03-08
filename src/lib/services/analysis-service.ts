@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import type { ArchitectureVisualization, Finding } from '../db';
+import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
 import type { FileEntry } from './chunker-service';
 import type { ParsedDocument } from './file-parser';
 import type { ArchPattern, DependencyGraph, ParsedFile } from './parser-service';
@@ -99,11 +99,32 @@ const PASS5OutputSchema = z.object({
   findings: z.array(PASS5FindingSchema).default([]),
 });
 
+const PASS6FounderContentSchema = z.object({
+  node_descriptions: z.record(z.string(), z.string()).default({}),
+  finding_rewrites: z.array(z.object({
+    original_title: z.string(),
+    title: z.string(),
+    description: z.string(),
+  })).default([]),
+  journey_rewrites: z.record(z.string(), z.object({
+    name: z.string(),
+    goal: z.string(),
+    step_descriptions: z.record(z.string(), z.string()).default({}),
+  })).default({}),
+  risk_rewrites: z.array(z.object({
+    original_title: z.string(),
+    title: z.string(),
+    impact: z.string(),
+    why_it_matters: z.string(),
+  })).default([]),
+});
+
 type PASS1Output = z.infer<typeof PASS1OutputSchema>;
 type PASS2Output = z.infer<typeof PASS2OutputSchema>;
 type PASS3BusinessAnalysis = z.infer<typeof PASS3BusinessAnalysisSchema>;
 type PASS4ArchitectureNarrative = z.infer<typeof PASS4ArchitectureNarrativeSchema>;
 type PASS5Output = z.infer<typeof PASS5OutputSchema>;
+type PASS6Output = z.infer<typeof PASS6FounderContentSchema>;
 
 export interface RepoData {
   repo_url: string;
@@ -133,6 +154,7 @@ export interface FullAnalysis {
   relationships: PASS2Output['relationships'];
   business_analysis: PASS3BusinessAnalysis;
   architecture_narrative: PASS4ArchitectureNarrative;
+  founder_content: FounderContent;
   raw_response: string;
   pass_results: {
     pass1: PassResult<PASS1Output>;
@@ -140,11 +162,12 @@ export interface FullAnalysis {
     pass3: PassResult<PASS3BusinessAnalysis>;
     pass4: PassResult<PASS4ArchitectureNarrative>;
     pass5: PassResult<PASS5Output>;
+    pass6: PassResult<PASS6Output>;
   };
 }
 
 export interface MultiPassProgressEvent {
-  stage: 'pass_1' | 'pass_2' | 'pass_3' | 'pass_4' | 'done';
+  stage: 'pass_1' | 'pass_2' | 'pass_3' | 'pass_4' | 'pass_6' | 'done';
   progress: number;
   message: string;
 }
@@ -994,6 +1017,64 @@ Output format:
     evidence: unique(item.evidence).slice(0, 8),
   }));
 
+  const pass6Prompt = `You are rewriting technical descriptions for a non-technical founder audience.
+
+For each item below, rewrite the text using zero technical jargon.
+Use everyday business analogies and concrete examples.
+Keep rewrites concise (1-2 sentences max per item).
+
+IMPORTANT RULES:
+- "Database" -> explain as "where information is stored, like a digital filing cabinet"
+- "API" -> "the way different parts of the system talk to each other"
+- "Authentication" -> "the login/security system"
+- Never mention specific technologies unless they are household names (e.g., "Stripe" is fine)
+- Write as if explaining to someone who has never written code
+- Use active voice and short sentences
+
+I need rewrites for:
+
+1. ARCHITECTURE NODE DESCRIPTIONS
+2. FINDING TITLES AND DESCRIPTIONS
+3. JOURNEY STEPS (if any)
+4. RISK ITEMS (if any)
+
+Return JSON matching the exact schema specified.`;
+
+  emit({ stage: 'pass_6', progress: 97, message: 'Generating founder-friendly content...' });
+  const pass6Context = {
+    architecture_nodes: architecture.nodes.map(node => ({
+      id: node.id,
+      name: node.name,
+      description: node.description,
+    })),
+    findings: findings.map(finding => ({
+      title: finding.title,
+      severity: finding.severity,
+      description: finding.description,
+    })),
+    journeys: pass3.parsed.user_journeys.map((journey, index) => ({
+      id: `journey_${index + 1}`,
+      name: journey,
+      goal: journey,
+      steps: [],
+    })),
+    risks: findings.map(finding => ({
+      title: finding.title,
+      impact: finding.description,
+      why_it_matters: finding.description,
+    })),
+    business_analysis: pass3.parsed,
+  };
+  const pass6 = await runAnthropicPassWithSchema(PASS6FounderContentSchema, 6, pass6Prompt, pass6Context);
+
+  const founderContent: FounderContent = {
+    narrative: pass4.parsed.founder_mode,
+    node_descriptions: pass6.parsed.node_descriptions,
+    finding_rewrites: pass6.parsed.finding_rewrites,
+    journey_rewrites: pass6.parsed.journey_rewrites,
+    risk_rewrites: pass6.parsed.risk_rewrites,
+  };
+
   const rawResponse = JSON.stringify({
     engine: 'anthropic_multi_pass',
     pass1: pass1.parsed,
@@ -1001,6 +1082,7 @@ Output format:
     pass3: pass3.parsed,
     pass4: pass4.parsed,
     pass5: pass5.parsed,
+    pass6: pass6.parsed,
   });
 
   const fullAnalysis: FullAnalysis = {
@@ -1011,6 +1093,7 @@ Output format:
     relationships: pass2.parsed.relationships,
     business_analysis: pass3.parsed,
     architecture_narrative: pass4.parsed,
+    founder_content: founderContent,
     raw_response: rawResponse,
     pass_results: {
       pass1,
@@ -1018,6 +1101,7 @@ Output format:
       pass3,
       pass4,
       pass5,
+      pass6,
     },
   };
 

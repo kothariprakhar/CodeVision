@@ -8,9 +8,19 @@ interface JourneyMapProps {
   analysisId: string;
   onSelectModule?: (moduleId: string) => void;
   founderMode?: boolean;
+  founderJourneyRewrites?: Record<string, {
+    name: string;
+    goal: string;
+    step_descriptions: Record<string, string>;
+  }>;
 }
 
-export default function JourneyMap({ analysisId, onSelectModule, founderMode = false }: JourneyMapProps) {
+export default function JourneyMap({
+  analysisId,
+  onSelectModule,
+  founderMode = false,
+  founderJourneyRewrites,
+}: JourneyMapProps) {
   const [flows, setFlows] = useState<BusinessFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,5 +60,12 @@ export default function JourneyMap({ analysisId, onSelectModule, founderMode = f
     );
   }
 
-  return <BusinessFlowView flows={flows} onStepSelect={onSelectModule} founderMode={founderMode} />;
+  return (
+    <BusinessFlowView
+      flows={flows}
+      onStepSelect={onSelectModule}
+      founderMode={founderMode}
+      founderJourneyRewrites={founderJourneyRewrites}
+    />
+  );
 }

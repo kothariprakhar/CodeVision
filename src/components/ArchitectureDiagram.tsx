@@ -30,6 +30,7 @@ interface ArchitectureDiagramProps {
   architecture: ArchitectureVisualization;
   highlightedNodeId?: string | null;
   founderMode?: boolean;
+  founderDescriptions?: Record<string, string>;
 }
 
 interface RenderNode {
@@ -330,6 +331,7 @@ export default function ArchitectureDiagram({
   architecture,
   highlightedNodeId,
   founderMode = false,
+  founderDescriptions,
 }: ArchitectureDiagramProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
@@ -444,6 +446,12 @@ export default function ArchitectureDiagram({
 
   const graphCanvasWidth = Math.max(400, baseGraph.width * zoomLevel);
   const graphCanvasHeight = Math.max(320, baseGraph.height * zoomLevel);
+  const nodeDescription = (node: RenderNode): string => {
+    if (founderMode && founderDescriptions?.[node.id]) {
+      return founderDescriptions[node.id];
+    }
+    return simplifyForFounder(node.description || 'Core system module', founderMode);
+  };
 
   return (
     <div className={isFullscreen ? 'fixed inset-0 z-50 bg-[hsl(220,25%,6%)] p-4' : 'space-y-4'}>
@@ -614,7 +622,7 @@ export default function ArchitectureDiagram({
                       </div>
                       <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
                       <div className="mt-1 line-clamp-2 text-xs text-gray-300">
-                        {simplifyForFounder(node.description || 'Core system module', founderMode)}
+                        {nodeDescription(node)}
                       </div>
                     </div>
                   </button>
@@ -644,10 +652,12 @@ export default function ArchitectureDiagram({
                   </div>
                   <div className="text-base font-semibold text-white">{selectedNode.label}</div>
                   <p className="text-sm leading-relaxed text-gray-300">
-                    {simplifyForFounder(
-                      selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
-                      founderMode
-                    )}
+                    {founderMode && founderDescriptions?.[selectedNode.id]
+                      ? founderDescriptions[selectedNode.id]
+                      : simplifyForFounder(
+                        selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
+                        founderMode
+                      )}
                   </p>
                   <div className="flex gap-2 text-xs">
                     <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">

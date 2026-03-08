@@ -7,6 +7,7 @@ import type {
   CapabilityGraph,
   JourneyGraph,
   QualityReport,
+  FounderContent,
 } from '../db';
 
 export interface CreateAnalysisInput {
@@ -17,6 +18,7 @@ export interface CreateAnalysisInput {
   capability_graph?: CapabilityGraph;
   journey_graph?: JourneyGraph;
   quality_report?: QualityReport;
+  founder_content?: FounderContent;
   raw_response: string;
   branch?: string;
   commit_hash?: string;
@@ -34,6 +36,7 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
       capability_graph: input.capability_graph || null,
       journey_graph: input.journey_graph || null,
       quality_report: input.quality_report || null,
+      founder_content: input.founder_content || null,
       chat_history: [], // JSONB - no stringify needed
       raw_response: input.raw_response,
       branch: input.branch,

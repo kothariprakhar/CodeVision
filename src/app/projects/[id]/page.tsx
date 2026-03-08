@@ -59,6 +59,20 @@ interface Analysis {
   summary: string;
   findings: Finding[];
   architecture: ArchitectureVisualization;
+  founder_content?: {
+    node_descriptions?: Record<string, string>;
+    journey_rewrites?: Record<string, {
+      name: string;
+      goal: string;
+      step_descriptions: Record<string, string>;
+    }>;
+    risk_rewrites?: Array<{
+      original_title: string;
+      title: string;
+      impact: string;
+      why_it_matters: string;
+    }>;
+  } | null;
   repo_metadata?: {
     stars?: number;
     primary_language?: string | null;
@@ -454,6 +468,7 @@ export default function ProjectDetail() {
   const repoStars = analysis?.repo_metadata?.stars;
   const repoLanguage = analysis?.repo_metadata?.primary_language || 'Not detected';
   const repoContributors = analysis?.repo_metadata?.contributors_count;
+  const hasFounderContent = Boolean(analysis?.founder_content);
 
   if (loading) {
     return <div className="text-center py-12 text-gray-400">Loading project...</div>;
@@ -495,16 +510,23 @@ export default function ProjectDetail() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setFounderMode(value => !value)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                founderMode
-                  ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
-                  : 'border-white/15 bg-white/5 text-gray-300'
-              }`}
-            >
-              Founder Mode {founderMode ? 'On' : 'Off'}
-            </button>
+            <div className="flex flex-col items-end">
+              <button
+                onClick={() => setFounderMode(value => !value)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  founderMode
+                    ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
+                    : 'border-white/15 bg-white/5 text-gray-300'
+                }`}
+              >
+                🧠 Plain Language {founderMode ? 'On' : 'Off'}
+              </button>
+              <span className="mt-1 text-[10px] text-gray-500">
+                {hasFounderContent
+                  ? 'AI-powered business language'
+                  : 'Basic term replacement (re-analyze for AI version)'}
+              </span>
+            </div>
             {getLastAnalyzedText() && (
               <span className="text-xs text-gray-500 bg-white/5 px-3 py-1.5 rounded-full whitespace-nowrap">
                 {getLastAnalyzedText()}
@@ -548,123 +570,103 @@ export default function ProjectDetail() {
                 </div>
               )}
             </div>
+
+            <div className="border-t border-white/10 pt-4">
+              <div className="mb-3 text-sm font-semibold text-white">
+                📎 Documents ({documents.length})
+              </div>
+              <div className="mb-3">
+                <label className="block">
+                  <div className="relative group">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.md,.markdown,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed z-10"
+                    />
+                    <div className="rounded-xl border border-dashed border-white/10 p-3 text-center transition-all duration-300 group-hover:border-purple-500/40 group-hover:bg-purple-500/5">
+                      <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/10">
+                        <svg className="h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-300">
+                        {uploading ? 'Uploading...' : 'Upload docs'}
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {documents.length === 0 ? (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-gray-500">
+                  No documents uploaded yet.
+                </div>
+              ) : (
+                <ul className="mb-3 space-y-2">
+                  {documents.map(doc => (
+                    <li key={doc.id} className="group flex items-center justify-between rounded-lg bg-white/[0.02] p-2 transition-all duration-200 hover:bg-white/[0.05]">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-purple-500/10 to-indigo-500/10 text-xs">
+                          {getFileIcon(doc.file_type)}
+                        </div>
+                        <span className="max-w-[150px] truncate text-xs text-gray-300">{doc.filename}</span>
+                      </div>
+                      <button
+                        onClick={() => deleteDocument(doc.id)}
+                        className="rounded px-1.5 py-0.5 text-[10px] text-red-400 opacity-0 transition-all duration-200 hover:text-red-300 group-hover:opacity-100"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                onClick={runAnalysis}
+                disabled={analyzing || documents.length === 0}
+                className="btn-primary-refined flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-white"
+              >
+                {analyzing ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {analysisButtonText}
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    {analysisButtonText}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </aside>
 
         <div>
-      {/* Documents Section - Moved Above Tabs */}
-      <div className="glass-refined rounded-2xl p-6 mb-6 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/5">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-white">
-                Requirements Documents
-              </h2>
-              <p className="text-xs text-gray-500">
-                {documents.length} {documents.length === 1 ? 'file' : 'files'} uploaded
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <label className="block">
-            <div className="relative group">
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.md,.markdown,.txt,.png,.jpg,.jpeg,.gif,.webp"
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-              />
-              <div className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center transition-all duration-300 group-hover:border-purple-500/40 group-hover:bg-purple-500/5">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-purple-500/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                <p className="text-sm text-gray-300 font-medium">
-                  {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  PRD, BRD, wireframes, or other requirements (PDF, MD, TXT, images)
-                </p>
-              </div>
-            </div>
-          </label>
-        </div>
-
-        {documents.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-gray-500 text-sm">No documents uploaded yet</p>
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {documents.map(doc => (
-              <li key={doc.id} className="group flex justify-between items-center p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] transition-all duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/10 to-indigo-500/10 flex items-center justify-center text-sm">
-                    {getFileIcon(doc.file_type)}
-                  </div>
-                  <span className="text-sm text-gray-300">{doc.filename}</span>
-                </div>
-                <button
-                  onClick={() => deleteDocument(doc.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-xs font-medium px-2 py-1 rounded transition-all duration-200"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {/* Tabs - Now Below Documents */}
       <div className="glass-refined rounded-2xl mb-6 overflow-hidden">
         <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
 	        <div key={activeTab} className="p-6 tab-fade-stage">
           {activeTab === 'architecture' && (
             <>
-              {/* Version selector and Run Analysis */}
-	              <div className="flex items-center justify-between mb-6">
-	                {versions.length > 0 && (
+	              {versions.length > 0 && (
+                  <div className="mb-6">
 	                  <AnalysisVersionSelector
 	                    versions={versions}
 	                    selectedVersion={selectedVersion}
 	                    onChange={handleVersionChange}
 	                  />
+                  </div>
 	                )}
-	                <button
-	                  onClick={runAnalysis}
-	                  disabled={analyzing || documents.length === 0}
-	                  className="btn-primary-refined px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2"
-	                >
-	                  {analyzing ? (
-	                    <>
-	                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-	                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-	                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-	                      </svg>
-	                      {analysisButtonText}
-	                    </>
-	                  ) : (
-	                    <>
-	                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-	                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-	                      </svg>
-	                      {analysisButtonText}
-	                    </>
-	                  )}
-	                </button>
-	              </div>
 
               {/* Architecture Diagram */}
 	              {analysis?.architecture ? (
@@ -672,6 +674,7 @@ export default function ProjectDetail() {
 	                  architecture={analysis.architecture}
 	                  highlightedNodeId={highlightedModuleId}
                     founderMode={founderMode}
+                    founderDescriptions={analysis.founder_content?.node_descriptions}
 	                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
@@ -700,6 +703,7 @@ export default function ProjectDetail() {
                   projectId={projectId}
                   analysisId={selectedVersion}
                   founderMode={founderMode}
+                  founderJourneyRewrites={analysis.founder_content?.journey_rewrites}
                   onSelectModule={(moduleId) => {
                     setHighlightedModuleId(moduleId);
                     setActiveTab('architecture');
@@ -754,7 +758,11 @@ export default function ProjectDetail() {
           {activeTab === 'risks' && (
             <>
               {analysis && selectedVersion ? (
-                <RiskPanel analysisId={selectedVersion} founderMode={founderMode} />
+                <RiskPanel
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  founderRiskRewrites={analysis.founder_content?.risk_rewrites}
+                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
                   <p className="font-medium text-gray-400">No risk assessment yet</p>

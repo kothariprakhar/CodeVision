@@ -5,6 +5,7 @@ import { chat } from '@/lib/services/chat';
 
 const AskSchema = z.object({
   question: z.string().min(1, 'Question is required'),
+  founderMode: z.boolean().optional(),
   elementContext: z.object({
     component: z.string().optional(),
     file: z.string().optional(),
@@ -37,7 +38,8 @@ export async function POST(
       access.value.project_id,
       access.value.analysis_id,
       parsed.data.question,
-      parsed.data.elementContext
+      parsed.data.elementContext,
+      parsed.data.founderMode === true
     );
 
     return NextResponse.json({

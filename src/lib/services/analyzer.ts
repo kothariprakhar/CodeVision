@@ -5,10 +5,10 @@ import { downloadRepository, cloneRepository, extractGitMetadata } from './githu
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 import { generateBusinessLensArtifacts } from './lenses';
-import { cloneRepo, cleanupClone } from './repo-ingestion';
+import { cloneRepo, cleanupClone, fetchRepoMetadata } from './repo-ingestion';
 import { buildFileManifest, groupByModule, prioritizeFiles } from './chunker-service';
 import { runFullAnalysis } from './analysis-service';
-import type { ArchitectureVisualization, Finding } from '../db';
+import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
 import {
   buildStructuralAnalysisContext,
   detectPatterns,
@@ -160,6 +160,24 @@ export async function analyzeProject(
     } catch (cloneError) {
       console.warn('Depth-1 clone failed, falling back to download/clone path');
       console.warn(cloneError instanceof Error ? cloneError.message : 'Unknown clone error');
+      try {
+        const metadata = await fetchRepoMetadata(project.github_url, project.github_token);
+        cloneMetadataSignals = {
+          stars: typeof metadata.stars === 'number' ? metadata.stars : undefined,
+          primary_language:
+            typeof metadata.primary_language === 'string'
+              ? metadata.primary_language
+              : (metadata.primary_language === null ? null : undefined),
+          size_kb: typeof metadata.size_kb === 'number' ? metadata.size_kb : undefined,
+          contributors_count:
+            typeof metadata.contributors_count === 'number' ? metadata.contributors_count : undefined,
+          last_commit_date:
+            typeof metadata.last_commit_date === 'string' ? metadata.last_commit_date : undefined,
+        };
+      } catch (metadataError) {
+        console.warn('Failed to fetch repository metadata during fallback path');
+        console.warn(metadataError instanceof Error ? metadataError.message : 'Unknown metadata error');
+      }
 
       let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id);
       if (!downloadResult.success) {
@@ -260,6 +278,7 @@ export async function analyzeProject(
       summary: string;
       findings: Finding[];
       architecture: ArchitectureVisualization;
+      founder_content?: FounderContent | null;
       raw_response: string;
     };
     try {
@@ -283,6 +302,7 @@ export async function analyzeProject(
         summary: fullAnalysis.summary,
         findings: fullAnalysis.findings,
         architecture: fullAnalysis.architecture,
+        founder_content: fullAnalysis.founder_content,
         raw_response: mergeDeterministicSignalsIntoRawResponse(fullAnalysis.raw_response, deterministicSignals),
       };
     } catch (multiPassError) {
@@ -295,6 +315,7 @@ export async function analyzeProject(
         codeFiles,
         structuralContext,
       });
+      analysisOutput.founder_content = null;
       analysisOutput.raw_response = mergeDeterministicSignalsIntoRawResponse(
         analysisOutput.raw_response,
         deterministicSignals
@@ -317,6 +338,7 @@ export async function analyzeProject(
       capability_graph: lensArtifacts.capability_graph,
       journey_graph: lensArtifacts.journey_graph,
       quality_report: lensArtifacts.quality_report,
+      founder_content: analysisOutput.founder_content || undefined,
       raw_response: analysisOutput.raw_response,
       branch: gitMetadata?.branch,
       commit_hash: gitMetadata?.commitHash,

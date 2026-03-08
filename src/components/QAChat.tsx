@@ -89,7 +89,7 @@ export default function QAChat({
       const response = await fetch(`/api/qa/${analysisId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, founderMode }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Failed to get answer');

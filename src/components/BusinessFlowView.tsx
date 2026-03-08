@@ -26,6 +26,11 @@ interface BusinessFlowViewProps {
   flows: BusinessFlow[];
   onStepSelect?: (moduleId: string) => void;
   founderMode?: boolean;
+  founderJourneyRewrites?: Record<string, {
+    name: string;
+    goal: string;
+    step_descriptions: Record<string, string>;
+  }>;
 }
 
 const DOMAIN_COLORS: Record<Domain, string> = {
@@ -58,6 +63,7 @@ export default function BusinessFlowView({
   flows,
   onStepSelect,
   founderMode = false,
+  founderJourneyRewrites,
 }: BusinessFlowViewProps) {
   const [selectedFlowIdState, setSelectedFlowIdState] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
@@ -159,8 +165,16 @@ export default function BusinessFlowView({
 
       {selectedFlow && (
         <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-4">
-          <h3 className="text-lg font-semibold text-white">{selectedFlow.title}</h3>
-          <p className="mt-1 text-sm text-gray-300">{simplifyForFounder(selectedFlow.trigger, founderMode)}</p>
+          <h3 className="text-lg font-semibold text-white">
+            {founderMode && founderJourneyRewrites?.[selectedFlow.id]?.name
+              ? founderJourneyRewrites[selectedFlow.id].name
+              : selectedFlow.title}
+          </h3>
+          <p className="mt-1 text-sm text-gray-300">
+            {founderMode && founderJourneyRewrites?.[selectedFlow.id]?.goal
+              ? founderJourneyRewrites[selectedFlow.id].goal
+              : simplifyForFounder(selectedFlow.trigger, founderMode)}
+          </p>
 
           <div className="relative mt-6 pl-2">
             <div className="absolute left-[26px] top-3 bottom-2 w-[2px] rounded-full bg-white/10" />
@@ -211,7 +225,13 @@ export default function BusinessFlowView({
                         {step.actor}: {step.action}
                       </div>
                       <div className="mt-1 text-xs text-gray-300">
-                        {simplifyForFounder(step.detail, founderMode)}
+                        {founderMode && founderJourneyRewrites?.[selectedFlow.id]?.step_descriptions
+                          ? (
+                            founderJourneyRewrites[selectedFlow.id].step_descriptions[String(step.order)]
+                            || founderJourneyRewrites[selectedFlow.id].step_descriptions[step.moduleId]
+                            || simplifyForFounder(step.detail, founderMode)
+                          )
+                          : simplifyForFounder(step.detail, founderMode)}
                       </div>
                     </button>
                   </div>
@@ -222,7 +242,11 @@ export default function BusinessFlowView({
 
           <div className="mt-5 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-gray-300">
             <div className="font-semibold text-white">Outcome</div>
-            <div className="mt-1">{simplifyForFounder(selectedFlow.outcome, founderMode)}</div>
+            <div className="mt-1">
+              {founderMode && founderJourneyRewrites?.[selectedFlow.id]?.goal
+                ? founderJourneyRewrites[selectedFlow.id].goal
+                : simplifyForFounder(selectedFlow.outcome, founderMode)}
+            </div>
           </div>
         </div>
       )}
