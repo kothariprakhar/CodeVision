@@ -27,7 +27,7 @@ const architecture = {
 };
 
 describe('ArchitectureDiagram', () => {
-  it('renders key nodes and opens detail panel on click', () => {
+  it('renders key nodes and opens floating detail popup on click', () => {
     render(<ArchitectureDiagram architecture={architecture} highlightedNodeId={null} />);
 
     const webNode = screen.getByRole('button', { name: /Web UI/i });
@@ -37,8 +37,8 @@ describe('ArchitectureDiagram', () => {
     expect(apiNode).toBeInTheDocument();
 
     fireEvent.click(apiNode);
-    expect(screen.getByText('Component Details')).toBeInTheDocument();
     expect(screen.getAllByText('API Service').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Type:\s*service/i)).toBeInTheDocument();
+    expect(screen.getByText(/Think of this as the/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Close details/i })).toBeInTheDocument();
   });
 });

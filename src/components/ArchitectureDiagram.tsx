@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { simplifyForFounder } from '@/lib/utils/founder-language';
 
 interface ArchitectureNode {
@@ -318,6 +318,14 @@ function edgeStyle(edge: RenderEdge, isActive: boolean): { stroke: string; width
   };
 }
 
+function businessAnalogy(kind: DiagramNodeKind): string {
+  if (kind === 'database') return 'filing cabinet for reliable records';
+  if (kind === 'external') return 'outside specialist your team calls when needed';
+  if (kind === 'queue') return 'back-office task line that keeps user actions fast';
+  if (kind === 'domain') return 'cross-functional team responsible for one business area';
+  return 'operational team executing a key workflow';
+}
+
 export default function ArchitectureDiagram({
   architecture,
   highlightedNodeId,
@@ -326,6 +334,7 @@ export default function ArchitectureDiagram({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeDomains, setActiveDomains] = useState<Set<Domain>>(
     new Set(['auth', 'data', 'payments', 'comms', 'core', 'infra'])
   );
@@ -367,10 +376,57 @@ export default function ArchitectureDiagram({
 
   const selectedNode = useMemo(() => {
     const selectedId = selectedNodeId || highlightedNodeId || '';
-    return detailed.nodes.find(node => node.id === selectedId)
+    return renderedNodes.find(node => node.id === selectedId)
+      || detailed.nodes.find(node => node.id === selectedId)
       || grouped.nodes.find(node => node.id === selectedId)
       || null;
-  }, [detailed.nodes, grouped.nodes, selectedNodeId, highlightedNodeId]);
+  }, [renderedNodes, detailed.nodes, grouped.nodes, selectedNodeId, highlightedNodeId]);
+
+  const popupPosition = useMemo(() => {
+    if (!selectedNode) return null;
+
+    const graphWidth = baseGraph.width * zoomLevel;
+    const graphHeight = baseGraph.height * zoomLevel;
+    const popupWidth = 320;
+    const nodeRight = (selectedNode.x + selectedNode.width) * zoomLevel;
+    const nodeTop = selectedNode.y * zoomLevel;
+    const fitsRight = nodeRight + popupWidth + 24 < graphWidth;
+
+    return {
+      left: fitsRight
+        ? nodeRight + 16
+        : Math.max(8, (selectedNode.x * zoomLevel) - popupWidth - 16),
+      top: Math.min(
+        Math.max(8, nodeTop - 20),
+        Math.max(8, graphHeight - 260)
+      ),
+    };
+  }, [selectedNode, zoomLevel, baseGraph.width, baseGraph.height]);
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (selectedNodeId) {
+        setSelectedNodeId(null);
+        return;
+      }
+      if (isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isFullscreen, selectedNodeId]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isFullscreen]);
 
   const toggleDomain = (domain: Domain): void => {
     setActiveDomains(prev => {
@@ -386,8 +442,22 @@ export default function ArchitectureDiagram({
     return <div className="py-10 text-center text-sm text-gray-400">No architecture data available.</div>;
   }
 
+  const graphCanvasWidth = Math.max(400, baseGraph.width * zoomLevel);
+  const graphCanvasHeight = Math.max(320, baseGraph.height * zoomLevel);
+
   return (
-    <div className="space-y-4">
+    <div className={isFullscreen ? 'fixed inset-0 z-50 bg-[hsl(220,25%,6%)] p-4' : 'space-y-4'}>
+      <div className={isFullscreen ? 'relative h-full space-y-4' : 'space-y-4'}>
+        {isFullscreen && (
+          <button
+            onClick={() => setIsFullscreen(false)}
+            className="absolute right-0 top-0 z-40 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Close fullscreen"
+            title="Close fullscreen"
+          >
+            x
+          </button>
+        )}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
         {(['auth', 'data', 'payments', 'comms', 'core', 'infra'] as Domain[]).map(domain => (
           <button
@@ -417,161 +487,185 @@ export default function ArchitectureDiagram({
             className="h-1.5 w-28 accent-indigo-400"
           />
           <span className="w-14 text-right">{Math.round(zoomLevel * 100)}%</span>
+          <button
+            onClick={() => setIsFullscreen(value => !value)}
+            className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? 'Exit' : 'Expand'}
+          </button>
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="h-[620px] overflow-auto rounded-2xl border border-white/10 bg-[#05070d]">
+      <div>
+        <div
+          className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
+            isFullscreen ? 'h-[calc(100vh-80px)]' : 'h-[620px]'
+          }`}
+        >
           <div
             className="relative"
             style={{
-              width: baseGraph.width,
-              height: baseGraph.height,
-              transform: `scale(${zoomLevel})`,
-              transformOrigin: 'top left',
+              width: graphCanvasWidth,
+              height: graphCanvasHeight,
             }}
+            onClick={() => setSelectedNodeId(null)}
           >
-            <svg
-              width={baseGraph.width}
-              height={baseGraph.height}
-              className="absolute inset-0"
-              aria-hidden
+            <div
+              className="relative"
+              style={{
+                width: baseGraph.width,
+                height: baseGraph.height,
+                transform: `scale(${zoomLevel})`,
+                transformOrigin: 'top left',
+              }}
             >
-              <defs>
-                <pattern id="grid-pattern" width="28" height="28" patternUnits="userSpaceOnUse">
-                  <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(122,136,166,0.12)" strokeWidth="1" />
-                </pattern>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+              <svg
+                width={baseGraph.width}
+                height={baseGraph.height}
+                className="absolute inset-0"
+                aria-hidden
+              >
+                <defs>
+                  <pattern id="grid-pattern" width="28" height="28" patternUnits="userSpaceOnUse">
+                    <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(122,136,166,0.12)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
-              {renderedEdges.map(edge => {
-                const source = renderedNodes.find(node => node.id === edge.from);
-                const target = renderedNodes.find(node => node.id === edge.to);
-                if (!source || !target) return null;
+                {renderedEdges.map(edge => {
+                  const source = renderedNodes.find(node => node.id === edge.from);
+                  const target = renderedNodes.find(node => node.id === edge.to);
+                  if (!source || !target) return null;
 
-                const sx = source.x + source.width / 2;
-                const sy = source.y + source.height / 2;
-                const tx = target.x + target.width / 2;
-                const ty = target.y + target.height / 2;
-                const midY = sy + (ty - sy) / 2;
+                  const sx = source.x + source.width / 2;
+                  const sy = source.y + source.height / 2;
+                  const tx = target.x + target.width / 2;
+                  const ty = target.y + target.height / 2;
+                  const midY = sy + (ty - sy) / 2;
 
-                const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
-                const style = edgeStyle(edge, isActive);
-                const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
+                  const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
+                  const style = edgeStyle(edge, isActive);
+                  const path = `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
 
+                  return (
+                    <g key={edge.id}>
+                      <path
+                        d={path}
+                        fill="none"
+                        stroke={style.stroke}
+                        strokeWidth={style.width}
+                        strokeDasharray={style.dash}
+                        opacity={style.opacity}
+                        markerEnd="url(#arrowhead)"
+                      />
+                      <text
+                        x={(sx + tx) / 2}
+                        y={midY - 8}
+                        fill="rgba(230,236,250,0.9)"
+                        fontSize="11"
+                        fontWeight="600"
+                        textAnchor="middle"
+                        opacity={style.opacity}
+                      >
+                        {edge.label}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
+                  </marker>
+                </defs>
+              </svg>
+
+              {renderedNodes.map(node => {
+                const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
+                const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
+                const borderColor = DOMAIN_COLORS[node.domain];
                 return (
-                  <g key={edge.id}>
-                    <path
-                      d={path}
-                      fill="none"
-                      stroke={style.stroke}
-                      strokeWidth={style.width}
-                      strokeDasharray={style.dash}
-                      opacity={style.opacity}
-                      markerEnd="url(#arrowhead)"
-                    />
-                    <text
-                      x={(sx + tx) / 2}
-                      y={midY - 8}
-                      fill="rgba(230,236,250,0.9)"
-                      fontSize="11"
-                      fontWeight="600"
-                      textAnchor="middle"
-                      opacity={style.opacity}
-                    >
-                      {edge.label}
-                    </text>
-                  </g>
+                  <button
+                    key={node.id}
+                    onMouseEnter={() => setHoveredNodeId(node.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
+                    className={`absolute rounded-xl border text-left transition-all ${
+                      isSelected ? 'ring-2 ring-white/65' : ''
+                    }`}
+                    style={{
+                      left: node.x,
+                      top: node.y,
+                      width: node.width,
+                      height: node.height,
+                      borderColor: `${borderColor}B3`,
+                      background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
+                      boxShadow: `0 0 0 1px ${borderColor}24`,
+                      opacity: isDimmed ? 0.26 : 1,
+                    }}
+                  >
+                    <div className="p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-400">
+                        {node.kind === 'domain' ? 'Domain Group' : titleCase(node.domain)}
+                      </div>
+                      <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
+                      <div className="mt-1 line-clamp-2 text-xs text-gray-300">
+                        {simplifyForFounder(node.description || 'Core system module', founderMode)}
+                      </div>
+                    </div>
+                  </button>
                 );
               })}
+            </div>
 
-              <defs>
-                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
-                </marker>
-              </defs>
-            </svg>
-
-            {renderedNodes.map(node => {
-              const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
-              const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
-              const borderColor = DOMAIN_COLORS[node.domain];
-              return (
+            {selectedNode && popupPosition && (
+              <div
+                className="animate-fade-in-up absolute z-30 w-80 rounded-2xl border border-white/15 bg-[#0a0f1a]/95 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                style={{ left: popupPosition.left, top: popupPosition.top }}
+                onClick={(event) => event.stopPropagation()}
+              >
                 <button
-                  key={node.id}
-                  onMouseEnter={() => setHoveredNodeId(node.id)}
-                  onMouseLeave={() => setHoveredNodeId(null)}
-                  onClick={() => setSelectedNodeId(node.id)}
-                  className={`absolute rounded-xl border text-left transition-all ${
-                    isSelected ? 'ring-2 ring-white/65' : ''
-                  }`}
-                  style={{
-                    left: node.x,
-                    top: node.y,
-                    width: node.width,
-                    height: node.height,
-                    borderColor: `${borderColor}B3`,
-                    background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
-                    boxShadow: `0 0 0 1px ${borderColor}24`,
-                    opacity: isDimmed ? 0.26 : 1,
-                  }}
+                  onClick={() => setSelectedNodeId(null)}
+                  className="absolute right-3 top-3 text-sm text-gray-500 transition-colors hover:text-white"
+                  aria-label="Close details"
                 >
-                  <div className="p-3">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-400">
-                      {node.kind === 'domain' ? 'Domain Group' : titleCase(node.domain)}
-                    </div>
-                    <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-gray-300">
-                      {simplifyForFounder(node.description || 'Core system module', founderMode)}
-                    </div>
-                  </div>
+                  x
                 </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <aside className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <h3 className="text-sm font-semibold text-white">Component Details</h3>
-          <div className="mt-1 text-xs text-gray-400">
-            {semanticMode === 'grouped' ? 'Grouped view (zoomed out)' : 'Detailed view (zoomed in)'}
-          </div>
-          {!selectedNode ? (
-            <p className="mt-3 text-xs text-gray-400">
-              Click a node to see a founder-friendly explanation of what it does and why it matters.
-            </p>
-          ) : (
-            <div className="mt-3 space-y-3 text-xs text-gray-300">
-              <div>
-                <div className="text-[11px] uppercase tracking-wide text-gray-500">{selectedNode.domain}</div>
-                <div className="mt-1 text-base font-semibold text-white">{selectedNode.label}</div>
-              </div>
-              <p>
-                {simplifyForFounder(
-                  selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
-                  founderMode
-                )}
-              </p>
-              <div className="rounded-lg border border-white/10 bg-black/25 p-2">
-                <div>Type: {selectedNode.kind}</div>
-                <div>Files: {selectedNode.fileCount}</div>
-                <div>
-                  Business framing: This acts like the{' '}
-                  {selectedNode.kind === 'database'
-                    ? 'filing cabinet for reliable records'
-                    : selectedNode.kind === 'external'
-                      ? 'outside specialist your team calls when needed'
-                      : selectedNode.kind === 'queue'
-                        ? 'back-office task line that keeps user actions fast'
-                        : selectedNode.kind === 'domain'
-                          ? 'cross-functional team responsible for one business area'
-                          : 'operational team executing a key workflow'}
-                  .
+                <div className="space-y-3 p-5">
+                  <div
+                    className="text-[11px] uppercase tracking-wide"
+                    style={{ color: DOMAIN_COLORS[selectedNode.domain] }}
+                  >
+                    {selectedNode.domain}
+                  </div>
+                  <div className="text-base font-semibold text-white">{selectedNode.label}</div>
+                  <p className="text-sm leading-relaxed text-gray-300">
+                    {simplifyForFounder(
+                      selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
+                      founderMode
+                    )}
+                  </p>
+                  <div className="flex gap-2 text-xs">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                      {selectedNode.kind}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                      {selectedNode.fileCount} files
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-gray-400">
+                    Think of this as the {businessAnalogy(selectedNode.kind)}.
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </aside>
+            )}
+          </div>
+        </div>
+      </div>
       </div>
     </div>
   );
