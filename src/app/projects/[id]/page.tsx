@@ -12,11 +12,6 @@ import JourneyMap from '@/components/JourneyMap';
 import TechStackDashboard from '@/components/TechStackDashboard';
 import QAChat from '@/components/QAChat';
 import RiskPanel from '@/components/RiskPanel';
-import ViewSwitcher, { type DiagramView } from '@/components/diagram/ViewSwitcher';
-import MetroMapView from '@/components/diagram/MetroMapView';
-import StoryView from '@/components/diagram/StoryView';
-import LiveSystemView from '@/components/diagram/LiveSystemView';
-import type { BusinessFlow } from '@/components/BusinessFlowView';
 import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
 import { useAuth } from '@/lib/hooks/useAuth';
 
@@ -87,7 +82,6 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [flows, setFlows] = useState<BusinessFlow[]>([]);
   const [versions, setVersions] = useState<AnalysisVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -105,7 +99,6 @@ export default function ProjectDetail() {
   const [founderMode, setFounderMode] = useState(true);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [qaExpanded, setQaExpanded] = useState(false);
-  const [diagramView, setDiagramView] = useState<DiagramView>('graph');
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const fetchProject = useCallback(async () => {
@@ -170,28 +163,6 @@ export default function ProjectDetail() {
       fetchAnalysis(selectedVersion);
     }
   }, [selectedVersion, fetchAnalysis]);
-
-  useEffect(() => {
-    if (!selectedVersion) {
-      setFlows([]);
-      return;
-    }
-
-    let cancelled = false;
-    fetch(`/api/analysis/${selectedVersion}/flows`)
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Failed to fetch flows');
-        if (!cancelled) setFlows(payload.flows || []);
-      })
-      .catch(() => {
-        if (!cancelled) setFlows([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedVersion]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -704,50 +675,13 @@ export default function ProjectDetail() {
 
               {/* Architecture Diagram */}
 	              {analysis?.architecture ? (
-                  <div className="space-y-4">
-                    <ViewSwitcher activeView={diagramView} onViewChange={setDiagramView} />
-
-                    {diagramView === 'graph' && (
-                      <ArchitectureDiagram
-                        architecture={analysis.architecture}
-                        highlightedNodeId={highlightedModuleId}
-                        founderMode={founderMode}
-                        founderDescriptions={analysis.founder_content?.node_descriptions}
-                        architectureDomains={analysis.business_context?.architecture_domains}
-                      />
-                    )}
-
-                    {diagramView === 'metro' && (
-                      <MetroMapView
-                        architecture={analysis.architecture}
-                        flows={flows}
-                        founderMode={founderMode}
-                        businessContext={analysis.business_context}
-                        founderDescriptions={analysis.founder_content?.node_descriptions}
-                        architectureDomains={analysis.business_context?.architecture_domains}
-                      />
-                    )}
-
-                    {diagramView === 'story' && (
-                      <StoryView
-                        architecture={analysis.architecture}
-                        flows={flows}
-                        founderMode={founderMode}
-                        businessContext={analysis.business_context}
-                      />
-                    )}
-
-                    {diagramView === 'live' && (
-                      <LiveSystemView
-                        architecture={analysis.architecture}
-                        flows={flows}
-                        founderMode={founderMode}
-                        founderDescriptions={analysis.founder_content?.node_descriptions}
-                        businessContext={analysis.business_context}
-                        architectureDomains={analysis.business_context?.architecture_domains}
-                      />
-                    )}
-                  </div>
+	                <ArchitectureDiagram
+	                  architecture={analysis.architecture}
+	                  highlightedNodeId={highlightedModuleId}
+                    founderMode={founderMode}
+                    founderDescriptions={analysis.founder_content?.node_descriptions}
+                    architectureDomains={analysis.business_context?.architecture_domains}
+	                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">

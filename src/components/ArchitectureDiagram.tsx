@@ -48,6 +48,10 @@ function titleCase(input: string): string {
   return input.charAt(0).toUpperCase() + input.slice(1);
 }
 
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+}
+
 function inferNodeKind(type: string, name: string): Exclude<DiagramNodeKind, 'domain'> {
   const joined = `${type} ${name}`.toLowerCase();
   if (/(database|db|storage|cache|redis|postgres|mongo)/.test(joined)) return 'database';
@@ -137,8 +141,8 @@ function buildDetailedLayout(
 
   const xStart = 70;
   const yStart = 70;
-  const xGap = 320;
-  const yGap = 175;
+  const xGap = 380;
+  const yGap = 220;
 
   sortedLayerKeys.forEach((layer, layerIndex) => {
     const layerNodes = layers.get(layer) || [];
@@ -174,10 +178,17 @@ function buildDetailedLayout(
   const finalMaxX = positioned.reduce((max, node) => Math.max(max, node.x + node.width), 0);
   const finalMaxY = positioned.reduce((max, node) => Math.max(max, node.y + node.height), 0);
 
+  const edgeWeightByPair = new Map<string, number>();
+  architecture.edges.forEach((edge) => {
+    const key = `${edge.from}->${edge.to}:${edge.type}`;
+    edgeWeightByPair.set(key, (edgeWeightByPair.get(key) || 0) + 1);
+  });
+
   const edges: RenderEdge[] = architecture.edges
     .filter(edge => nodeById.has(edge.from) && nodeById.has(edge.to))
     .map((edge, index) => {
       const visual = edgeVisual(edge.type);
+      const key = `${edge.from}->${edge.to}:${edge.type}`;
       return {
         id: `${edge.from}-${edge.to}-${index}`,
         from: edge.from,
@@ -187,9 +198,11 @@ function buildDetailedLayout(
         data_flow: edge.data_flow,
         trigger: edge.trigger,
         styleKind: visual.styleKind,
-        weight: 1,
+        weight: edgeWeightByPair.get(key) || 1,
       };
-    });
+    })
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 30);
 
   return {
     nodes: positioned,
@@ -310,6 +323,7 @@ export default function ArchitectureDiagram({
 }: ArchitectureDiagramProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set());
@@ -547,6 +561,7 @@ export default function ArchitectureDiagram({
                 width: graphCanvasWidth,
                 height: graphCanvasHeight,
               }}
+              onClick={() => setSelectedNodeId(null)}
             >
               <div
                 className="relative"
@@ -587,6 +602,9 @@ export default function ArchitectureDiagram({
                     const tx = target.x + target.width / 2;
                     const ty = target.y + target.height / 2;
                     const midY = sy + (ty - sy) / 2;
+                    const selectedFocusId = selectedNodeId || highlightedNodeId;
+                    const showEdgeLabel = hoveredEdgeId === edge.id
+                      || (Boolean(selectedFocusId) && (edge.from === selectedFocusId || edge.to === selectedFocusId));
 
                     return (
                       <g key={edge.id}>
@@ -598,18 +616,22 @@ export default function ArchitectureDiagram({
                           strokeDasharray={style.dash}
                           opacity={style.opacity}
                           markerEnd="url(#arrowhead)"
+                          onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                          onMouseLeave={() => setHoveredEdgeId(null)}
+                          style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
                         />
-                        <text
-                          x={(sx + tx) / 2}
-                          y={midY - 8}
-                          fill="rgba(230,236,250,0.9)"
-                          fontSize="11"
-                          fontWeight="600"
-                          textAnchor="middle"
-                          opacity={style.opacity}
-                        >
-                          {edge.label}
-                        </text>
+                        {showEdgeLabel && (
+                          <text
+                            x={(sx + tx) / 2}
+                            y={midY - 8}
+                            fill="rgba(230,236,250,0.9)"
+                            fontSize="10"
+                            textAnchor="middle"
+                            opacity={0.85}
+                          >
+                            {truncate(edge.label, 40)}
+                          </text>
+                        )}
                       </g>
                     );
                   })}
@@ -633,7 +655,7 @@ export default function ArchitectureDiagram({
                     borderColor: `${borderColor}B3`,
                     background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
                     boxShadow: `0 0 0 1px ${borderColor}24`,
-                    opacity: isDimmed ? 0.35 : 1,
+                    opacity: isDimmed ? 0.4 : 1,
                     '--domain-color': borderColor,
                   };
                   return (
@@ -649,9 +671,6 @@ export default function ArchitectureDiagram({
                       style={nodeStyle}
                     >
                       <div className="p-3">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-400">
-                          {node.kind === 'domain' ? 'Domain Group' : titleCase(node.domain)}
-                        </div>
                         <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
                         <div className="mt-1 line-clamp-2 text-xs text-gray-300">
                           {nodeDescription(node)}
