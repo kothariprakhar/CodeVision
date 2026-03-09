@@ -5,8 +5,11 @@ import { simplifyForFounder } from '@/lib/utils/founder-language';
 import type { BusinessFlow } from './BusinessFlowView';
 import { buildDomainColors, buildNodeDomainMap, colorFromDomain } from './diagram/domain-utils';
 import type { ArchitectureDomain, ArchitectureVisualization } from './diagram/types';
+import ParticleSystem from './diagram/ParticleSystem';
+import FlowControlBar, { type FlowScenario } from './diagram/FlowControlBar';
 
 type DiagramNodeKind = 'service' | 'database' | 'external' | 'queue' | 'domain';
+const FIXED_SIM_SPEED = 0.5;
 
 interface ArchitectureDiagramProps {
   architecture: ArchitectureVisualization;
@@ -314,11 +317,54 @@ function businessAnalogy(kind: DiagramNodeKind): string {
   return 'operational team executing a key workflow';
 }
 
+function buildScenarios(flows: BusinessFlow[], edges: RenderEdge[]): FlowScenario[] {
+  const edgeMap = new Map<string, RenderEdge[]>();
+  edges.forEach(edge => {
+    const key = `${edge.from}->${edge.to}`;
+    if (!edgeMap.has(key)) edgeMap.set(key, []);
+    edgeMap.get(key)?.push(edge);
+  });
+
+  return flows
+    .filter(flow => flow.steps.length > 1)
+    .map(flow => {
+      const moduleSequence = flow.steps
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map(step => step.moduleId);
+
+      const stepEdges: string[][] = [];
+      for (let i = 0; i < moduleSequence.length - 1; i += 1) {
+        const key = `${moduleSequence[i]}->${moduleSequence[i + 1]}`;
+        const matching = (edgeMap.get(key) || []).map(edge => edge.id);
+        stepEdges.push(matching);
+      }
+
+      const involvedEdges = Array.from(new Set(stepEdges.flat()));
+      return {
+        id: flow.id,
+        name: flow.title,
+        trigger: flow.trigger,
+        steps: flow.steps
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map(step => ({
+            moduleId: step.moduleId,
+            label: `${step.actor} ${step.action}`,
+            duration: 1800,
+          })),
+        involvedEdges,
+        stepEdges,
+      };
+    });
+}
+
 export default function ArchitectureDiagram({
   architecture,
   highlightedNodeId,
   founderMode = false,
   founderDescriptions,
+  flows = [],
   architectureDomains,
 }: ArchitectureDiagramProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -327,8 +373,15 @@ export default function ArchitectureDiagram({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenDomains, setHiddenDomains] = useState<Set<string>>(new Set());
+  const [animMode, setAnimMode] = useState<'off' | 'ambient' | 'scenario'>('off');
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(null);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [stepProgress, setStepProgress] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const stepStartRef = useRef<number | null>(null);
 
   const nodeDomains = useMemo(
     () => buildNodeDomainMap(architecture.nodes, architectureDomains),
@@ -352,8 +405,13 @@ export default function ArchitectureDiagram({
 
   const detailed = useMemo(() => buildDetailedLayout(architecture, nodeDomains), [architecture, nodeDomains]);
   const grouped = useMemo(() => buildGroupedLayout(architecture, nodeDomains), [architecture, nodeDomains]);
+  const scenarios = useMemo(() => buildScenarios(flows, detailed.edges), [flows, detailed.edges]);
+  const activeScenario = useMemo(
+    () => scenarios.find(scenario => scenario.id === activeScenarioId) || null,
+    [scenarios, activeScenarioId]
+  );
 
-  const semanticMode = zoomLevel < 0.78 ? 'grouped' : 'detailed';
+  const semanticMode = animMode === 'scenario' ? 'detailed' : (zoomLevel < 0.78 ? 'grouped' : 'detailed');
   const baseGraph = semanticMode === 'grouped' ? grouped : detailed;
 
   const stickyIds = useMemo(() => {
@@ -395,6 +453,29 @@ export default function ArchitectureDiagram({
     });
     return map;
   }, [renderedEdges, renderedNodeMap]);
+
+  const normalizedStepIndex = useMemo(() => {
+    if (!activeScenario || activeScenario.steps.length === 0) return 0;
+    return currentStepIndex % activeScenario.steps.length;
+  }, [activeScenario, currentStepIndex]);
+
+  const scenarioActiveEdgeIds = useMemo(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating) return new Set<string>();
+    const upToStep = activeScenario.stepEdges.slice(0, Math.max(0, normalizedStepIndex + 1));
+    return new Set(upToStep.flat());
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex]);
+
+  const activeNodeIds = useMemo(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating) return new Set<string>();
+    const current = activeScenario.steps[normalizedStepIndex];
+    return current ? new Set([current.moduleId]) : new Set<string>();
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex]);
+
+  const currentStep = useMemo(() => {
+    if (!activeScenario) return null;
+    if (activeScenario.steps.length === 0) return null;
+    return activeScenario.steps[normalizedStepIndex] || null;
+  }, [activeScenario, normalizedStepIndex]);
 
   const focusNodeId = hoveredNodeId || highlightedNodeId || null;
 
@@ -447,6 +528,62 @@ export default function ArchitectureDiagram({
   }, [selectedNode, zoomLevel, baseGraph.width, baseGraph.height]);
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyPreference = () => {
+      const reduced = mediaQuery.matches;
+      setPrefersReducedMotion(reduced);
+      if (reduced) {
+        setAnimMode('off');
+        setIsAnimating(false);
+      }
+    };
+
+    applyPreference();
+    mediaQuery.addEventListener('change', applyPreference);
+    return () => mediaQuery.removeEventListener('change', applyPreference);
+  }, []);
+
+  useEffect(() => {
+    if (animMode !== 'scenario' || !activeScenario || !isAnimating || prefersReducedMotion) {
+      stepStartRef.current = null;
+      return;
+    }
+
+    let frameId = 0;
+    const tick = (timestamp: number) => {
+      if (!activeScenario || activeScenario.steps.length === 0) return;
+      if (stepStartRef.current === null) {
+        stepStartRef.current = timestamp;
+      }
+
+      const safeIndex = Math.min(normalizedStepIndex, activeScenario.steps.length - 1);
+      const step = activeScenario.steps[safeIndex];
+      const duration = Math.max(450, step.duration / FIXED_SIM_SPEED);
+      const elapsed = timestamp - stepStartRef.current;
+      const progress = Math.min(1, elapsed / duration);
+      setStepProgress(progress);
+
+      if (elapsed >= duration) {
+        setCurrentStepIndex(prev => (prev + 1) % activeScenario.steps.length);
+        stepStartRef.current = timestamp;
+      }
+
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [animMode, activeScenario, isAnimating, normalizedStepIndex, prefersReducedMotion]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || animMode === 'off') return;
+    if (isAnimating) svg.unpauseAnimations();
+    else svg.pauseAnimations();
+  }, [animMode, isAnimating, renderedEdges.length]);
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (selectedNodeId) {
@@ -482,6 +619,31 @@ export default function ArchitectureDiagram({
       if (next.size >= discoveredDomains.length) return new Set<string>();
       return next;
     });
+  };
+
+  const handleAnimationToggle = () => {
+    if (prefersReducedMotion) return;
+    if (animMode === 'off') {
+      setAnimMode(activeScenarioId ? 'scenario' : 'ambient');
+      setIsAnimating(true);
+      return;
+    }
+    setIsAnimating(value => !value);
+  };
+
+  const handleScenarioSelect = (id: string | null) => {
+    setActiveScenarioId(id);
+    setCurrentStepIndex(0);
+    setStepProgress(0);
+    stepStartRef.current = null;
+
+    if (prefersReducedMotion) return;
+    if (id) {
+      setAnimMode('scenario');
+      setIsAnimating(true);
+      return;
+    }
+    setAnimMode(isAnimating ? 'ambient' : 'off');
   };
 
   const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -549,6 +711,43 @@ export default function ArchitectureDiagram({
           </div>
         </div>
 
+        <FlowControlBar
+          isAnimating={isAnimating}
+          mode={animMode}
+          scenarios={scenarios}
+          activeScenarioId={activeScenarioId}
+          speed={FIXED_SIM_SPEED}
+          disabled={prefersReducedMotion}
+          showSpeedControls={false}
+          currentStep={currentStep && activeScenario
+            ? {
+              index: normalizedStepIndex,
+              total: activeScenario.steps.length,
+              label: currentStep.label,
+            }
+            : undefined}
+          onToggle={handleAnimationToggle}
+          onSelectScenario={handleScenarioSelect}
+          onSpeedChange={() => {}}
+        />
+
+        {animMode === 'scenario' && isAnimating && currentStep && activeScenario && (
+          <div className="rounded-xl border border-white/10 bg-[#0b1120]/85 px-4 py-3">
+            <div className="text-xs font-medium text-gray-200">
+              Step {normalizedStepIndex + 1}/{activeScenario.steps.length}: {currentStep.label}
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full transition-[width] duration-150 ease-out"
+                style={{
+                  width: `${Math.round(stepProgress * 100)}%`,
+                  background: domainColors[renderedNodeMap.get(currentStep.moduleId)?.domain || 'core'] || colorFromDomain('core'),
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="overflow-hidden">
           <div
             className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
@@ -595,7 +794,14 @@ export default function ArchitectureDiagram({
                     if (!edgePath) return null;
 
                     const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
-                    const style = edgeStyle(edge, isActive);
+                    let style = edgeStyle(edge, isActive);
+                    if (animMode === 'scenario' && isAnimating && activeScenario) {
+                      if (scenarioActiveEdgeIds.has(edge.id)) {
+                        style = { ...style, width: Math.max(style.width, 4), opacity: 1 };
+                      } else {
+                        style = { ...style, width: Math.max(1, style.width * 0.7), opacity: 0.12 };
+                      }
+                    }
 
                     const sx = source.x + source.width / 2;
                     const sy = source.y + source.height / 2;
@@ -636,6 +842,20 @@ export default function ArchitectureDiagram({
                     );
                   })}
 
+                  {animMode !== 'off' && (
+                    <ParticleSystem
+                      edges={renderedEdges}
+                      nodes={renderedNodes.map(node => ({ id: node.id, domain: node.domain }))}
+                      edgePaths={edgePaths}
+                      mode={animMode}
+                      activeScenario={activeScenario}
+                      speed={FIXED_SIM_SPEED}
+                      isAnimating={isAnimating}
+                      activeEdgeIds={scenarioActiveEdgeIds}
+                      domainColors={domainColors}
+                    />
+                  )}
+
                   <defs>
                     <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
                       <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
@@ -645,6 +865,8 @@ export default function ArchitectureDiagram({
 
                 {renderedNodes.map(node => {
                   const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
+                  const isScenarioPlaying = animMode === 'scenario' && isAnimating && activeScenario;
+                  const isScenarioDimmed = isScenarioPlaying && !activeNodeIds.has(node.id);
                   const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
                   const borderColor = domainColors[node.domain] || colorFromDomain(node.domain);
                   const nodeStyle: CSSProperties & Record<string, string | number> = {
@@ -655,7 +877,7 @@ export default function ArchitectureDiagram({
                     borderColor: `${borderColor}B3`,
                     background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
                     boxShadow: `0 0 0 1px ${borderColor}24`,
-                    opacity: isDimmed ? 0.4 : 1,
+                    opacity: isScenarioDimmed ? 0.25 : (isDimmed ? 0.4 : 1),
                     '--domain-color': borderColor,
                   };
                   return (

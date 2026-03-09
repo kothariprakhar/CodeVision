@@ -21,6 +21,7 @@ interface FlowControlBarProps {
   speed: number;
   currentStep?: { index: number; total: number; label: string };
   disabled?: boolean;
+  showSpeedControls?: boolean;
   onToggle: () => void;
   onSelectScenario: (id: string | null) => void;
   onSpeedChange: (speed: number) => void;
@@ -36,6 +37,7 @@ export default function FlowControlBar({
   speed,
   currentStep,
   disabled = false,
+  showSpeedControls = true,
   onToggle,
   onSelectScenario,
   onSpeedChange,
@@ -70,23 +72,25 @@ export default function FlowControlBar({
           </select>
         </div>
 
-        <div className="flex items-center gap-1">
-          <span className="text-gray-400">Speed</span>
-          {SPEED_OPTIONS.map(option => (
-            <button
-              key={option}
-              onClick={() => onSpeedChange(option)}
-              disabled={disabled}
-              className={`rounded-md border px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                speed === option
-                  ? 'border-indigo-400/60 bg-indigo-500/20 text-indigo-100'
-                  : 'border-white/15 bg-white/5 text-gray-300 hover:bg-white/10'
-              }`}
-            >
-              {option}x
-            </button>
-          ))}
-        </div>
+        {showSpeedControls && (
+          <div className="flex items-center gap-1">
+            <span className="text-gray-400">Speed</span>
+            {SPEED_OPTIONS.map(option => (
+              <button
+                key={option}
+                onClick={() => onSpeedChange(option)}
+                disabled={disabled}
+                className={`rounded-md border px-2 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  speed === option
+                    ? 'border-indigo-400/60 bg-indigo-500/20 text-indigo-100'
+                    : 'border-white/15 bg-white/5 text-gray-300 hover:bg-white/10'
+                }`}
+              >
+                {option}x
+              </button>
+            ))}
+          </div>
+        )}
 
         <span className="ml-auto text-[11px] text-gray-500">
           {disabled
