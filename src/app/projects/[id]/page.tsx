@@ -1,4 +1,6 @@
 'use client';
+// ABOUTME: Project detail page showing architecture diagram, issues, and analysis controls.
+// ABOUTME: Allows uploading requirement documents and running analysis on a GitHub repository.
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -10,6 +12,7 @@ import ChatBot from '@/components/ChatBot';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
 import { useAuth } from '@/lib/hooks/useAuth';
+import type { ArchitectureVisualization } from '@/lib/db';
 
 interface Project {
   id: string;
@@ -33,22 +36,6 @@ interface Finding {
   title: string;
   description: string;
   evidence: string[];
-}
-
-interface ArchitectureVisualization {
-  nodes: Array<{
-    id: string;
-    name: string;
-    type: 'component' | 'service' | 'api' | 'database' | 'external' | 'ui';
-    complexity: 'low' | 'medium' | 'high';
-    description: string;
-    files: string[];
-  }>;
-  edges: Array<{
-    from: string;
-    to: string;
-    type: 'imports' | 'calls' | 'stores' | 'renders';
-  }>;
 }
 
 interface Analysis {

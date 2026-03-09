@@ -1,143 +1,107 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+// ABOUTME: Architecture and data flow visualization component for analyzed projects.
+// ABOUTME: Renders a module grid and a data flow flowchart derived from Claude's analysis.
 
-interface ArchitectureNode {
-  id: string;
-  name: string;
-  type: 'component' | 'service' | 'api' | 'database' | 'external' | 'ui';
-  complexity: 'low' | 'medium' | 'high';
-  description: string;
-  files: string[];
-}
-
-interface ArchitectureEdge {
-  from: string;
-  to: string;
-  type: 'imports' | 'calls' | 'stores' | 'renders';
-}
-
-interface ArchitectureVisualization {
-  nodes: ArchitectureNode[];
-  edges: ArchitectureEdge[];
-}
-
-type MVCLayer = 'view' | 'controller' | 'model';
-
-interface MVCComponent {
-  id: string;
-  name: string;
-  layer: MVCLayer;
-  originalType: string;
-  complexity: 'low' | 'medium' | 'high';
-  files: string[];
-  description: string;
-}
+import { useState, useMemo } from 'react';
+import type { ArchitectureVisualization, ArchitectureNode } from '@/lib/db';
 
 interface ArchitectureDiagramProps {
   architecture: ArchitectureVisualization;
 }
 
+const TYPE_CONFIG: Record<ArchitectureNode['type'], {
+  label: string;
+  dotClass: string;
+  textClass: string;
+  iconBgClass: string;
+  selectedBorderClass: string;
+  selectedBg: string;
+}> = {
+  ui:        { label: 'Frontend',   dotClass: 'bg-purple-400', textClass: 'text-purple-400', iconBgClass: 'bg-purple-500/20', selectedBorderClass: 'border-purple-500 ring-2 ring-purple-500/60', selectedBg: 'rgba(168,85,247,0.15)' },
+  api:       { label: 'API',        dotClass: 'bg-blue-400',   textClass: 'text-blue-400',   iconBgClass: 'bg-blue-500/20',   selectedBorderClass: 'border-blue-500 ring-2 ring-blue-500/60',     selectedBg: 'rgba(59,130,246,0.15)' },
+  service:   { label: 'Service',    dotClass: 'bg-cyan-400',   textClass: 'text-cyan-400',   iconBgClass: 'bg-cyan-500/20',   selectedBorderClass: 'border-cyan-500 ring-2 ring-cyan-500/60',     selectedBg: 'rgba(6,182,212,0.15)' },
+  component: { label: 'Component',  dotClass: 'bg-indigo-400', textClass: 'text-indigo-400', iconBgClass: 'bg-indigo-500/20', selectedBorderClass: 'border-indigo-500 ring-2 ring-indigo-500/60', selectedBg: 'rgba(99,102,241,0.15)' },
+  database:  { label: 'Database',   dotClass: 'bg-green-400',  textClass: 'text-green-400',  iconBgClass: 'bg-green-500/20',  selectedBorderClass: 'border-green-500 ring-2 ring-green-500/60',   selectedBg: 'rgba(34,197,94,0.15)' },
+  external:  { label: 'External',   dotClass: 'bg-orange-400', textClass: 'text-orange-400', iconBgClass: 'bg-orange-500/20', selectedBorderClass: 'border-orange-500 ring-2 ring-orange-500/60', selectedBg: 'rgba(249,115,22,0.15)' },
+};
+
+// SVG icon paths (Heroicons outline, viewBox 0 0 24 24) for each node type
+const TYPE_ICONS: Record<ArchitectureNode['type'], string> = {
+  ui:        'M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  api:       'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
+  service:   'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  component: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+  database:  'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4',
+  external:  'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9',
+};
+
+
+// Ordered stages used when architecture.dataFlow is absent (fallback)
+const INFERRED_STAGES: {
+  types: ArchitectureNode['type'][];
+  label: string;
+  bg: string;
+  border: string;
+  textClass: string;
+}[] = [
+  { types: ['ui'],                  label: 'Frontend',          bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.3)', textClass: 'text-purple-400' },
+  { types: ['api'],                 label: 'API Routes',        bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.3)', textClass: 'text-blue-400' },
+  { types: ['service','component'], label: 'Business Logic',    bg: 'rgba(6,182,212,0.08)',  border: 'rgba(6,182,212,0.3)',  textClass: 'text-cyan-400' },
+  { types: ['database'],            label: 'Data Storage',      bg: 'rgba(34,197,94,0.08)',  border: 'rgba(34,197,94,0.3)',  textClass: 'text-green-400' },
+  { types: ['external'],            label: 'External Services', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.3)', textClass: 'text-orange-400' },
+];
+
+function DownArrow() {
+  return (
+    <div className="flex flex-col items-center my-1" aria-hidden="true">
+      <div className="w-px h-4 bg-gray-600" />
+      <svg width="10" height="7" viewBox="0 0 10 7" className="text-gray-600 fill-current">
+        <polygon points="5,7 0,0 10,0" />
+      </svg>
+    </div>
+  );
+}
+
 export default function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) {
-  const [selectedComponent, setSelectedComponent] = useState<string | null>(null);
+  const [view, setView] = useState<'architecture' | 'dataflow'>('architecture');
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Map architecture nodes to MVC layers
-  const mvcComponents = useMemo(() => {
-    if (!architecture?.nodes) return [];
+  const connections = useMemo(() => {
+    if (!selectedNodeId) return { outgoing: [], incoming: [] };
+    const outgoing = architecture.edges
+      .filter(e => e.from === selectedNodeId)
+      .map(e => ({ node: architecture.nodes.find(n => n.id === e.to)!, edgeType: e.type }))
+      .filter(c => c.node);
+    const incoming = architecture.edges
+      .filter(e => e.to === selectedNodeId)
+      .map(e => ({ node: architecture.nodes.find(n => n.id === e.from)!, edgeType: e.type }))
+      .filter(c => c.node);
+    return { outgoing, incoming };
+  }, [selectedNodeId, architecture]);
 
-    return architecture.nodes.map((node): MVCComponent => {
-      let layer: MVCLayer = 'controller';
+  const connectedNodeIds = useMemo(() => new Set([
+    ...connections.outgoing.map(c => c.node.id),
+    ...connections.incoming.map(c => c.node.id),
+  ]), [connections]);
 
-      if (node.type === 'ui' || node.type === 'component') {
-        layer = 'view';
-      } else if (node.type === 'api') {
-        layer = 'controller';
-      } else if (node.type === 'service' || node.type === 'database') {
-        layer = 'model';
-      } else if (node.type === 'external') {
-        layer = 'model';
-      }
-
-      return {
-        id: node.id,
-        name: node.name,
-        layer,
-        originalType: node.type,
-        complexity: node.complexity,
-        files: node.files,
-        description: node.description,
-      };
-    });
-  }, [architecture]);
-
-  // Group components by layer
-  const componentsByLayer = useMemo(() => {
-    const grouped = {
-      view: [] as MVCComponent[],
-      controller: [] as MVCComponent[],
-      model: [] as MVCComponent[],
-    };
-
-    mvcComponents.forEach(comp => {
-      grouped[comp.layer].push(comp);
-    });
-
-    return grouped;
-  }, [mvcComponents]);
-
-  // Get layers affected by selected component
-  const getAffectedLayers = useCallback((componentId: string | null) => {
-    if (!componentId || !architecture) return [];
-
-    const component = mvcComponents.find(c => c.id === componentId);
-    if (!component) return [];
-
-    const affectedLayers = new Set<MVCLayer>([component.layer]);
-
-    const findConnected = (nodeId: string, visited: Set<string>) => {
-      if (visited.has(nodeId)) return;
-      visited.add(nodeId);
-
-      architecture.edges.forEach(edge => {
-        if (edge.from === nodeId) {
-          const targetComp = mvcComponents.find(c => c.id === edge.to);
-          if (targetComp) {
-            affectedLayers.add(targetComp.layer);
-            findConnected(edge.to, visited);
-          }
-        }
-        if (edge.to === nodeId) {
-          const sourceComp = mvcComponents.find(c => c.id === edge.from);
-          if (sourceComp) {
-            affectedLayers.add(sourceComp.layer);
-            findConnected(edge.from, visited);
-          }
-        }
-      });
-    };
-
-    findConnected(componentId, new Set());
-
-    return Array.from(affectedLayers);
-  }, [architecture, mvcComponents]);
-
-  const getComplexityBadge = (complexity: 'low' | 'medium' | 'high') => {
-    switch (complexity) {
-      case 'low':
-        return 'bg-green-500/20 text-green-400 border-green-500/40';
-      case 'medium':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40';
-      case 'high':
-        return 'bg-red-500/20 text-red-400 border-red-500/40';
-    }
-  };
-
-  const selectedComponentData = selectedComponent
-    ? mvcComponents.find(c => c.id === selectedComponent)
+  const selectedNode = selectedNodeId
+    ? architecture.nodes.find(n => n.id === selectedNodeId)
     : null;
 
-  const affectedLayers = selectedComponent ? getAffectedLayers(selectedComponent) : [];
-  const layerCount = affectedLayers.length;
+  // Inferred flow stages for fallback when architecture.dataFlow is absent
+  const inferredFlowStages = useMemo(() => {
+    const byType = new Map<string, ArchitectureNode[]>();
+    architecture.nodes.forEach(n => {
+      byType.set(n.type, [...(byType.get(n.type) || []), n]);
+    });
+    return INFERRED_STAGES
+      .map(s => ({
+        ...s,
+        nodes: s.types.flatMap(t => byType.get(t) || []),
+      }))
+      .filter(s => s.nodes.length > 0);
+  }, [architecture.nodes]);
 
   if (!architecture || architecture.nodes.length === 0) {
     return (
@@ -149,195 +113,228 @@ export default function ArchitectureDiagram({ architecture }: ArchitectureDiagra
 
   return (
     <div>
-      {/* Simple Summary Stats */}
-      <div className="mb-4 text-sm text-gray-400">
-        View: {componentsByLayer.view.length} | Controller: {componentsByLayer.controller.length} | Model: {componentsByLayer.model.length}
+      {/* View toggle */}
+      <div className="flex gap-1 mb-5 p-1 bg-white/5 rounded-xl w-fit">
+        <button
+          onClick={() => { setView('architecture'); setSelectedNodeId(null); }}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+            view === 'architecture' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          Modules
+        </button>
+        <button
+          onClick={() => { setView('dataflow'); setSelectedNodeId(null); }}
+          className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+            view === 'dataflow' ? 'bg-purple-500/30 text-purple-300' : 'text-gray-400 hover:text-gray-300'
+          }`}
+        >
+          User Flow
+        </button>
       </div>
 
-      {/* Main Layout */}
-      <div className="flex gap-6">
-        {/* Left: MVC Flow Diagram */}
-        <div className="flex-1">
-          {/* Horizontal Flow */}
-          <div className="flex items-center justify-between mb-6">
-            {/* View Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%)',
-                borderColor: 'rgba(168, 85, 247, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-purple-400 text-sm">View</h3>
-                <p className="text-xs text-gray-500">UI</p>
-              </div>
-            </div>
+      {/* Architecture view */}
+      {view === 'architecture' && (
+        <div>
+          <p className="text-xs text-gray-500 mb-4">
+            {architecture.nodes.length} modules · {architecture.edges.length} connections · Click a module to explore connections
+          </p>
+          <div className="flex gap-5">
+            {/* Module grid */}
+            <div className="flex-1 grid grid-cols-3 gap-3">
+              {architecture.nodes.map(node => {
+                const config = TYPE_CONFIG[node.type];
+                const isSelected = selectedNodeId === node.id;
+                const isOutgoing = connections.outgoing.some(c => c.node.id === node.id);
+                const isIncoming = connections.incoming.some(c => c.node.id === node.id);
+                const isDimmed   = !!selectedNodeId && !isSelected && !connectedNodeIds.has(node.id);
 
-            <div className="px-2 text-gray-500">
-              <svg width="30" height="16" viewBox="0 0 30 16">
-                <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" strokeWidth="2" />
-                <polygon points="22,4 30,8 22,12" fill="currentColor" />
-              </svg>
-            </div>
+                let cardClass = 'w-full text-left p-3 rounded-xl border transition-all duration-150 ';
+                let cardStyle: React.CSSProperties = {};
 
-            {/* Controller Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%)',
-                borderColor: 'rgba(59, 130, 246, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-blue-400 text-sm">Controller</h3>
-                <p className="text-xs text-gray-500">API</p>
-              </div>
-            </div>
+                if (isSelected) {
+                  cardClass += config.selectedBorderClass;
+                  cardStyle = { background: config.selectedBg };
+                } else if (isOutgoing) {
+                  cardClass += 'border-yellow-500/60 bg-yellow-500/5';
+                } else if (isIncoming) {
+                  cardClass += 'border-blue-500/60 bg-blue-500/5';
+                } else if (isDimmed) {
+                  cardClass += 'border-white/5 opacity-40';
+                } else {
+                  cardClass += 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.05]';
+                }
 
-            <div className="px-2 text-gray-500">
-              <svg width="30" height="16" viewBox="0 0 30 16">
-                <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" strokeWidth="2" />
-                <polygon points="22,4 30,8 22,12" fill="currentColor" />
-              </svg>
-            </div>
-
-            {/* Model Layer */}
-            <div className="flex-1 p-3 rounded-xl border backdrop-blur-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.05) 100%)',
-                borderColor: 'rgba(34, 197, 94, 0.3)',
-              }}>
-              <div className="text-center">
-                <h3 className="font-semibold text-green-400 text-sm">Model</h3>
-                <p className="text-xs text-gray-500">Data</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Component Cards */}
-          <div className="grid grid-cols-3 gap-3">
-            {/* View Components */}
-            <div className="space-y-2">
-              {componentsByLayer.view.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.view.map(comp => (
+                return (
                   <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-purple-500/20 border-purple-500 ring-1 ring-purple-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-purple-500/50'
-                    }`}
+                    key={node.id}
+                    onClick={() => setSelectedNodeId(isSelected ? null : node.id)}
+                    className={cardClass}
+                    style={cardStyle}
                   >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
+                    {/* Header row: icon + name + relation badge */}
+                    <div className="flex items-start gap-2 mb-2">
+                      {/* Type icon */}
+                      <div className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${config.iconBgClass}`}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={`w-4 h-4 ${config.textClass}`}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d={TYPE_ICONS[node.type]} />
+                        </svg>
+                      </div>
+                      {/* Node name */}
+                      <p className="font-bold text-sm text-white leading-tight flex-1 mt-0.5">{node.name}</p>
+                      {/* Relation / selected badge */}
+                      {isSelected && (
+                        <span className={`flex-shrink-0 w-2 h-2 rounded-full mt-1 ${config.dotClass}`} aria-label="selected" />
+                      )}
+                      {!isSelected && isOutgoing && (
+                        <span className="flex-shrink-0 text-[10px] font-bold text-yellow-400 mt-0.5 leading-none">→</span>
+                      )}
+                      {!isSelected && isIncoming && (
+                        <span className="flex-shrink-0 text-[10px] font-bold text-blue-400 mt-0.5 leading-none">←</span>
+                      )}
+                    </div>
+                    {/* File count */}
+                    <div className="flex items-center gap-1">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5 text-gray-500 flex-shrink-0">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                      </svg>
+                      <span className="text-sm text-gray-400">
+                        {node.files.length} {node.files.length === 1 ? 'file' : 'files'}
                       </span>
                     </div>
                   </button>
-                ))
-              )}
+                );
+              })}
             </div>
 
-            {/* Controller Components */}
-            <div className="space-y-2">
-              {componentsByLayer.controller.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.controller.map(comp => (
-                  <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-blue-500/20 border-blue-500 ring-1 ring-blue-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-blue-500/50'
-                    }`}
-                  >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
+            {/* Detail panel */}
+            <div className="w-56 flex-shrink-0">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] min-h-[200px] p-3">
+                {selectedNode ? (
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{selectedNode.name}</p>
+                      <span className={`text-xs ${TYPE_CONFIG[selectedNode.type].textClass}`}>
+                        {TYPE_CONFIG[selectedNode.type].label}
                       </span>
                     </div>
-                  </button>
-                ))
-              )}
-            </div>
-
-            {/* Model Components */}
-            <div className="space-y-2">
-              {componentsByLayer.model.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">None</div>
-              ) : (
-                componentsByLayer.model.map(comp => (
-                  <button
-                    key={comp.id}
-                    onClick={() => setSelectedComponent(selectedComponent === comp.id ? null : comp.id)}
-                    className={`w-full text-left p-2 rounded-lg border transition-colors ${
-                      selectedComponent === comp.id
-                        ? 'bg-green-500/20 border-green-500 ring-1 ring-green-500/50'
-                        : 'bg-white/5 border-white/10 hover:border-green-500/50'
-                    }`}
-                  >
-                    <div className="font-medium text-xs text-white truncate">{comp.name}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">{comp.files.length} files</span>
-                      <span className={`text-xs px-1 py-0.5 rounded border ${getComplexityBadge(comp.complexity)}`}>
-                        {comp.complexity}
-                      </span>
+                    <p className="text-xs text-gray-400 leading-relaxed">{selectedNode.description}</p>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Files ({selectedNode.files.length})</div>
+                      <div className="space-y-0.5 max-h-16 overflow-y-auto">
+                        {selectedNode.files.map((f, i) => (
+                          <div key={i} className="text-xs text-gray-400 truncate">{f}</div>
+                        ))}
+                      </div>
                     </div>
-                  </button>
-                ))
-              )}
+                    {connections.outgoing.length > 0 && (
+                      <div>
+                        <div className="text-xs text-yellow-500/80 mb-1">→ Calls / Uses</div>
+                        <div className="space-y-0.5">
+                          {connections.outgoing.map((c, i) => (
+                            <div key={i} className="text-xs text-gray-400 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500/60 flex-shrink-0" />
+                              <span className="truncate">{c.node.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {connections.incoming.length > 0 && (
+                      <div>
+                        <div className="text-xs text-blue-400/80 mb-1">← Used by</div>
+                        <div className="space-y-0.5">
+                          {connections.incoming.map((c, i) => (
+                            <div key={i} className="text-xs text-gray-400 flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500/60 flex-shrink-0" />
+                              <span className="truncate">{c.node.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-600 text-xs pt-16">
+                    Select a module to explore
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        {/* Right: Detail Panel */}
-        <div className="w-64 flex-shrink-0">
-          <div className="p-3 rounded-xl border bg-white/5 border-white/10 min-h-[200px]">
-            {selectedComponentData ? (
-              <div className="space-y-3">
-                <h3 className="font-semibold text-white text-sm">{selectedComponentData.name}</h3>
+      {/* Data Flow view */}
+      {view === 'dataflow' && (
+        <div>
+          <p className="text-xs text-gray-500 mb-5">
+            High-level view of how data moves through the system.
+          </p>
+          <div className="flex flex-col items-center">
+            {/* Starting node — always shown */}
+            <div className="px-6 py-3 rounded-xl border border-white/20 bg-white/5 text-center w-full max-w-sm">
+              <div className="text-sm font-semibold text-white">User / Browser</div>
+              <div className="text-xs text-gray-500 mt-0.5">Initiates requests</div>
+            </div>
 
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Description</div>
-                  <div className="text-xs text-gray-300">
-                    {selectedComponentData.description || 'No description'}
+            {/* Explicit dataFlow steps from Claude */}
+            {architecture.dataFlow && architecture.dataFlow.length > 0 ? (
+              architecture.dataFlow.map(step => {
+                const nodesInStep = step.nodeIds
+                  .map(id => architecture.nodes.find(n => n.id === id))
+                  .filter((n): n is ArchitectureNode => !!n);
+                return (
+                  <div key={step.step} className="flex flex-col items-center w-full max-w-sm">
+                    <DownArrow />
+                    <div
+                      className="w-full rounded-xl border p-3"
+                      style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.12)' }}
+                    >
+                      <h3 className="font-semibold text-sm text-white mb-1">{step.label}</h3>
+                      <p className="text-xs text-gray-400 mb-2 leading-relaxed">{step.description}</p>
+                      {nodesInStep.length > 0 && (
+                        <div className="space-y-1">
+                          {nodesInStep.slice(0, 4).map(node => (
+                            <div key={node.id} className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${TYPE_CONFIG[node.type].dotClass}`} />
+                              <span className="text-xs text-gray-400">{node.name}</span>
+                            </div>
+                          ))}
+                          {nodesInStep.length > 4 && (
+                            <div className="text-xs text-gray-600">+{nodesInStep.length - 4} more</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Files ({selectedComponentData.files.length})</div>
-                  <div className="space-y-0.5 max-h-20 overflow-y-auto">
-                    {selectedComponentData.files.map((file, i) => (
-                      <div key={i} className="text-xs text-gray-400 truncate">{file}</div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">Impact</div>
-                  <div className={`text-xs font-medium ${
-                    layerCount === 1 ? 'text-green-400' :
-                    layerCount === 2 ? 'text-yellow-400' :
-                    'text-red-400'
-                  }`}>
-                    {layerCount} layer{layerCount !== 1 ? 's' : ''} affected
-                  </div>
-                </div>
-              </div>
+                );
+              })
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-500 text-xs">
-                Click a component
-              </div>
+              /* Fallback: inferred stages from node types */
+              inferredFlowStages.map(stage => (
+                <div key={stage.label} className="flex flex-col items-center w-full max-w-sm">
+                  <DownArrow />
+                  <div
+                    className="w-full rounded-xl border p-3"
+                    style={{ background: stage.bg, borderColor: stage.border }}
+                  >
+                    <h3 className={`font-semibold text-sm mb-2 ${stage.textClass}`}>{stage.label}</h3>
+                    <div className="space-y-1">
+                      {stage.nodes.slice(0, 4).map(node => (
+                        <div key={node.id} className="text-xs text-gray-400">• {node.name}</div>
+                      ))}
+                      {stage.nodes.length > 4 && (
+                        <div className="text-xs text-gray-600">+{stage.nodes.length - 4} more</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
