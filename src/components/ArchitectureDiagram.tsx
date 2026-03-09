@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { simplifyForFounder } from '@/lib/utils/founder-language';
 import type { BusinessFlow } from './BusinessFlowView';
 import { buildDomainColors, buildNodeDomainMap, colorFromDomain } from './diagram/domain-utils';
@@ -379,9 +380,21 @@ export default function ArchitectureDiagram({
   const [stepProgress, setStepProgress] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [canvasViewport, setCanvasViewport] = useState({
+    left: 0,
+    top: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    width: 0,
+    height: 0,
+    windowWidth: 0,
+    windowHeight: 0,
+  });
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasScrollRef = useRef<HTMLDivElement | null>(null);
   const stepStartRef = useRef<number | null>(null);
+  const originalBodyOverflowRef = useRef<string>('');
 
   const nodeDomains = useMemo(
     () => buildNodeDomainMap(architecture.nodes, architectureDomains),
@@ -509,9 +522,27 @@ export default function ArchitectureDiagram({
   const popupPosition = useMemo(() => {
     if (!selectedNode) return null;
 
+    const popupWidth = 320;
+    const popupHeight = 420;
+
+    if (isFullscreen) {
+      const nodeLeft = canvasViewport.left + (selectedNode.x * zoomLevel) - canvasViewport.scrollLeft;
+      const nodeRight = nodeLeft + (selectedNode.width * zoomLevel);
+      const nodeTop = canvasViewport.top + (selectedNode.y * zoomLevel) - canvasViewport.scrollTop;
+
+      const fitsRight = nodeRight + popupWidth + 16 < canvasViewport.windowWidth - 8;
+      const rawLeft = fitsRight ? nodeRight + 16 : nodeLeft - popupWidth - 16;
+      const rawTop = nodeTop - 20;
+
+      return {
+        left: Math.min(Math.max(8, rawLeft), Math.max(8, canvasViewport.windowWidth - popupWidth - 8)),
+        top: Math.min(Math.max(8, rawTop), Math.max(8, canvasViewport.windowHeight - popupHeight - 8)),
+        mode: 'fixed' as const,
+      };
+    }
+
     const graphWidth = baseGraph.width * zoomLevel;
     const graphHeight = baseGraph.height * zoomLevel;
-    const popupWidth = 320;
     const nodeRight = (selectedNode.x + selectedNode.width) * zoomLevel;
     const nodeTop = selectedNode.y * zoomLevel;
     const fitsRight = nodeRight + popupWidth + 24 < graphWidth;
@@ -524,8 +555,9 @@ export default function ArchitectureDiagram({
         Math.max(8, nodeTop - 20),
         Math.max(8, graphHeight - 260)
       ),
+      mode: 'absolute' as const,
     };
-  }, [selectedNode, zoomLevel, baseGraph.width, baseGraph.height]);
+  }, [selectedNode, zoomLevel, baseGraph.width, baseGraph.height, isFullscreen, canvasViewport]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -584,6 +616,14 @@ export default function ArchitectureDiagram({
   }, [animMode, isAnimating, renderedEdges.length]);
 
   useEffect(() => {
+    if (typeof document === 'undefined') return;
+    originalBodyOverflowRef.current = document.body.style.overflow;
+    return () => {
+      document.body.style.overflow = originalBodyOverflowRef.current;
+    };
+  }, []);
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (selectedNodeId) {
@@ -600,13 +640,39 @@ export default function ArchitectureDiagram({
   }, [isFullscreen, selectedNodeId]);
 
   useEffect(() => {
-    if (!isFullscreen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    if (typeof document === 'undefined') return;
+    document.body.style.overflow = isFullscreen ? 'hidden' : originalBodyOverflowRef.current;
   }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen || typeof window === 'undefined') return;
+
+    const updateViewport = () => {
+      const canvas = canvasScrollRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      setCanvasViewport({
+        left: rect.left,
+        top: rect.top,
+        scrollLeft: canvas.scrollLeft,
+        scrollTop: canvas.scrollTop,
+        width: rect.width,
+        height: rect.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+      });
+    };
+
+    updateViewport();
+    const canvas = canvasScrollRef.current;
+    canvas?.addEventListener('scroll', updateViewport);
+    window.addEventListener('resize', updateViewport);
+
+    return () => {
+      canvas?.removeEventListener('scroll', updateViewport);
+      window.removeEventListener('resize', updateViewport);
+    };
+  }, [isFullscreen, zoomLevel, selectedNodeId, highlightedNodeId]);
 
   const toggleDomain = (domain: string): void => {
     setHiddenDomains(prev => {
@@ -667,50 +733,55 @@ export default function ArchitectureDiagram({
     return simplifyForFounder(node.description || 'Core system module', founderMode);
   };
 
-  return (
-    <div className={isFullscreen ? 'fixed inset-0 z-50 bg-[hsl(220,25%,6%)] p-4' : 'space-y-4'}>
-      <div className={isFullscreen ? 'relative h-full space-y-4' : 'space-y-4'}>
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
-          {discoveredDomains.map(domain => (
-            <button
-              key={domain}
-              onClick={() => toggleDomain(domain)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                hiddenDomains.has(domain) ? 'text-gray-400' : 'text-white'
-              }`}
-              style={{
-                borderColor: hiddenDomains.has(domain) ? 'rgba(255,255,255,0.16)' : `${(domainColors[domain] || colorFromDomain(domain))}CC`,
-                background: hiddenDomains.has(domain) ? 'rgba(255,255,255,0.02)' : `${(domainColors[domain] || colorFromDomain(domain))}33`,
-              }}
-              title={domainPurposeByName.get(domain) || undefined}
-            >
-              {titleCase(domain)}
-            </button>
-          ))}
+  const diagramContent = (
+    <div
+      data-testid="architecture-diagram-root"
+      className={isFullscreen
+        ? 'fixed inset-0 z-50 flex flex-col gap-4 bg-[hsl(220,25%,6%)] p-4'
+        : 'space-y-4'}
+    >
+      <div className="flex flex-shrink-0 flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        {discoveredDomains.map(domain => (
+          <button
+            key={domain}
+            onClick={() => toggleDomain(domain)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              hiddenDomains.has(domain) ? 'text-gray-400' : 'text-white'
+            }`}
+            style={{
+              borderColor: hiddenDomains.has(domain) ? 'rgba(255,255,255,0.16)' : `${(domainColors[domain] || colorFromDomain(domain))}CC`,
+              background: hiddenDomains.has(domain) ? 'rgba(255,255,255,0.02)' : `${(domainColors[domain] || colorFromDomain(domain))}33`,
+            }}
+            title={domainPurposeByName.get(domain) || undefined}
+          >
+            {titleCase(domain)}
+          </button>
+        ))}
 
-          <div className="ml-auto flex items-center gap-2 text-xs text-gray-300">
-            <span>Zoom</span>
-            <input
-              aria-label="Diagram zoom"
-              type="range"
-              min={0.45}
-              max={1.3}
-              step={0.01}
-              value={zoomLevel}
-              onChange={event => setZoomLevel(Number(event.target.value))}
-              className="h-1.5 w-28 accent-indigo-400"
-            />
-            <span className="w-14 text-right">{Math.round(zoomLevel * 100)}%</span>
-            <button
-              onClick={() => setIsFullscreen(value => !value)}
-              className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10"
-              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-            >
-              {isFullscreen ? '⤓ Exit' : '⤢ Expand'}
-            </button>
-          </div>
+        <div className="ml-auto flex items-center gap-2 text-xs text-gray-300">
+          <span>Zoom</span>
+          <input
+            aria-label="Diagram zoom"
+            type="range"
+            min={0.45}
+            max={1.3}
+            step={0.01}
+            value={zoomLevel}
+            onChange={event => setZoomLevel(Number(event.target.value))}
+            className="h-1.5 w-28 accent-indigo-400"
+          />
+          <span className="w-14 text-right">{Math.round(zoomLevel * 100)}%</span>
+          <button
+            onClick={() => setIsFullscreen(value => !value)}
+            className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? '⤓ Exit' : '⤢ Expand'}
+          </button>
         </div>
+      </div>
 
+      <div className="flex-shrink-0">
         <FlowControlBar
           isAnimating={isAnimating}
           mode={animMode}
@@ -730,249 +801,261 @@ export default function ArchitectureDiagram({
           onSelectScenario={handleScenarioSelect}
           onSpeedChange={() => {}}
         />
+      </div>
 
-        {animMode === 'scenario' && isAnimating && currentStep && activeScenario && (
-          <div className="rounded-xl border border-white/10 bg-[#0b1120]/85 px-4 py-3">
-            <div className="text-xs font-medium text-gray-200">
-              Step {normalizedStepIndex + 1}/{activeScenario.steps.length}: {currentStep.label}
-            </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full transition-[width] duration-150 ease-out"
-                style={{
-                  width: `${Math.round(stepProgress * 100)}%`,
-                  background: domainColors[renderedNodeMap.get(currentStep.moduleId)?.domain || 'core'] || colorFromDomain('core'),
-                }}
-              />
-            </div>
+      {animMode === 'scenario' && isAnimating && currentStep && activeScenario && (
+        <div className="flex-shrink-0 rounded-xl border border-white/10 bg-[#0b1120]/85 px-4 py-3">
+          <div className="text-xs font-medium text-gray-200">
+            Step {normalizedStepIndex + 1}/{activeScenario.steps.length}: {currentStep.label}
           </div>
-        )}
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full transition-[width] duration-150 ease-out"
+              style={{
+                width: `${Math.round(stepProgress * 100)}%`,
+                background: domainColors[renderedNodeMap.get(currentStep.moduleId)?.domain || 'core'] || colorFromDomain('core'),
+              }}
+            />
+          </div>
+        </div>
+      )}
 
-        <div className="overflow-hidden">
+      <div className={isFullscreen ? 'min-h-0 flex-1 overflow-hidden' : 'overflow-hidden'}>
+        <div
+          ref={canvasScrollRef}
+          className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
+            isFullscreen ? 'h-full' : 'h-[620px]'
+          }`}
+        >
           <div
-            className={`overflow-auto rounded-2xl border border-white/10 bg-[#05070d] ${
-              isFullscreen ? 'h-[calc(100vh-80px)]' : 'h-[620px]'
-            }`}
+            className="relative"
+            style={{
+              width: graphCanvasWidth,
+              height: graphCanvasHeight,
+            }}
           >
             <div
               className="relative"
               style={{
-                width: graphCanvasWidth,
-                height: graphCanvasHeight,
+                width: baseGraph.width,
+                height: baseGraph.height,
+                transform: `scale(${zoomLevel})`,
+                transformOrigin: 'top left',
               }}
-              onClick={() => setSelectedNodeId(null)}
             >
-              <div
-                className="relative"
-                style={{
-                  width: baseGraph.width,
-                  height: baseGraph.height,
-                  transform: `scale(${zoomLevel})`,
-                  transformOrigin: 'top left',
-                }}
+              <svg
+                ref={svgRef}
+                width={baseGraph.width}
+                height={baseGraph.height}
+                className="absolute inset-0"
+                aria-hidden
+                onClick={handleSvgClick}
               >
-                <svg
-                  ref={svgRef}
-                  width={baseGraph.width}
-                  height={baseGraph.height}
-                  className="absolute inset-0"
-                  aria-hidden
-                  onClick={handleSvgClick}
-                >
-                  <defs>
-                    <pattern id="grid-pattern" width="28" height="28" patternUnits="userSpaceOnUse">
-                      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(122,136,166,0.12)" strokeWidth="1" />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+                <defs>
+                  <pattern id="grid-pattern" width="28" height="28" patternUnits="userSpaceOnUse">
+                    <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(122,136,166,0.12)" strokeWidth="1" />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
-                  {renderedEdges.map(edge => {
-                    const source = renderedNodeMap.get(edge.from);
-                    const target = renderedNodeMap.get(edge.to);
-                    if (!source || !target) return null;
-                    const edgePath = edgePaths.get(edge.id);
-                    if (!edgePath) return null;
+                {renderedEdges.map(edge => {
+                  const source = renderedNodeMap.get(edge.from);
+                  const target = renderedNodeMap.get(edge.to);
+                  if (!source || !target) return null;
+                  const edgePath = edgePaths.get(edge.id);
+                  if (!edgePath) return null;
 
-                    const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
-                    let style = edgeStyle(edge, isActive);
-                    if (animMode === 'scenario' && isAnimating && activeScenario) {
-                      if (scenarioActiveEdgeIds.has(edge.id)) {
-                        style = { ...style, width: Math.max(style.width, 4), opacity: 1 };
-                      } else {
-                        style = { ...style, width: Math.max(1, style.width * 0.7), opacity: 0.12 };
-                      }
+                  const isActive = !focusNodeId || edge.from === focusNodeId || edge.to === focusNodeId;
+                  let style = edgeStyle(edge, isActive);
+                  if (animMode === 'scenario' && isAnimating && activeScenario) {
+                    if (scenarioActiveEdgeIds.has(edge.id)) {
+                      style = { ...style, width: Math.max(style.width, 4), opacity: 1 };
+                    } else {
+                      style = { ...style, width: Math.max(1, style.width * 0.7), opacity: 0.12 };
                     }
+                  }
 
-                    const sx = source.x + source.width / 2;
-                    const sy = source.y + source.height / 2;
-                    const tx = target.x + target.width / 2;
-                    const ty = target.y + target.height / 2;
-                    const midY = sy + (ty - sy) / 2;
-                    const selectedFocusId = selectedNodeId || highlightedNodeId;
-                    const showEdgeLabel = hoveredEdgeId === edge.id
-                      || (Boolean(selectedFocusId) && (edge.from === selectedFocusId || edge.to === selectedFocusId));
+                  const sx = source.x + source.width / 2;
+                  const sy = source.y + source.height / 2;
+                  const tx = target.x + target.width / 2;
+                  const ty = target.y + target.height / 2;
+                  const midY = sy + (ty - sy) / 2;
+                  const selectedFocusId = selectedNodeId || highlightedNodeId;
+                  const showEdgeLabel = hoveredEdgeId === edge.id
+                    || (Boolean(selectedFocusId) && (edge.from === selectedFocusId || edge.to === selectedFocusId));
 
-                    return (
-                      <g key={edge.id}>
-                        <path
-                          d={edgePath.path}
-                          fill="none"
-                          stroke={style.stroke}
-                          strokeWidth={style.width}
-                          strokeDasharray={style.dash}
-                          opacity={style.opacity}
-                          markerEnd="url(#arrowhead)"
-                          onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                          onMouseLeave={() => setHoveredEdgeId(null)}
-                          style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
-                        />
-                        {showEdgeLabel && (
-                          <text
-                            x={(sx + tx) / 2}
-                            y={midY - 8}
-                            fill="rgba(230,236,250,0.9)"
-                            fontSize="10"
-                            textAnchor="middle"
-                            opacity={0.85}
-                          >
-                            {truncate(edge.label, 40)}
-                          </text>
-                        )}
-                      </g>
-                    );
-                  })}
-
-                  {animMode !== 'off' && (
-                    <ParticleSystem
-                      edges={renderedEdges}
-                      nodes={renderedNodes.map(node => ({ id: node.id, domain: node.domain }))}
-                      edgePaths={edgePaths}
-                      mode={animMode}
-                      activeScenario={activeScenario}
-                      speed={FIXED_SIM_SPEED}
-                      isAnimating={isAnimating}
-                      activeEdgeIds={scenarioActiveEdgeIds}
-                      domainColors={domainColors}
-                    />
-                  )}
-
-                  <defs>
-                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                      <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
-                    </marker>
-                  </defs>
-                </svg>
-
-                {renderedNodes.map(node => {
-                  const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
-                  const isScenarioPlaying = animMode === 'scenario' && isAnimating && activeScenario;
-                  const isScenarioDimmed = isScenarioPlaying && !activeNodeIds.has(node.id);
-                  const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
-                  const borderColor = domainColors[node.domain] || colorFromDomain(node.domain);
-                  const nodeStyle: CSSProperties & Record<string, string | number> = {
-                    left: node.x,
-                    top: node.y,
-                    width: node.width,
-                    height: node.height,
-                    borderColor: `${borderColor}B3`,
-                    background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
-                    boxShadow: `0 0 0 1px ${borderColor}24`,
-                    opacity: isScenarioDimmed ? 0.25 : (isDimmed ? 0.4 : 1),
-                    '--domain-color': borderColor,
-                  };
                   return (
-                    <button
-                      key={node.id}
-                      onMouseEnter={() => setHoveredNodeId(node.id)}
-                      onMouseLeave={() => setHoveredNodeId(null)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedNodeId(node.id);
-                      }}
-                      className={`absolute rounded-xl border text-left transition-all ${isSelected ? 'node-selected' : ''}`}
-                      style={nodeStyle}
-                    >
-                      <div className="p-3">
-                        <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
-                        <div className="mt-1 line-clamp-2 text-xs text-gray-300">
-                          {nodeDescription(node)}
-                        </div>
-                      </div>
-                    </button>
+                    <g key={edge.id}>
+                      <path
+                        d={edgePath.path}
+                        fill="none"
+                        stroke={style.stroke}
+                        strokeWidth={style.width}
+                        strokeDasharray={style.dash}
+                        opacity={style.opacity}
+                        markerEnd="url(#arrowhead)"
+                        onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                        onMouseLeave={() => setHoveredEdgeId(null)}
+                        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                      />
+                      {showEdgeLabel && (
+                        <text
+                          x={(sx + tx) / 2}
+                          y={midY - 8}
+                          fill="rgba(230,236,250,0.9)"
+                          fontSize="10"
+                          textAnchor="middle"
+                          opacity={0.85}
+                        >
+                          {truncate(edge.label, 40)}
+                        </text>
+                      )}
+                    </g>
                   );
                 })}
-              </div>
 
-              {selectedNode && popupPosition && (
-                <div
-                  className="animate-fade-in absolute z-30 w-80 rounded-2xl border border-white/15 bg-[#0a0f1a]/95 shadow-2xl shadow-black/40 backdrop-blur-xl"
-                  style={{ left: popupPosition.left, top: popupPosition.top }}
-                  onClick={(event) => event.stopPropagation()}
-                >
+                {animMode !== 'off' && (
+                  <ParticleSystem
+                    edges={renderedEdges}
+                    nodes={renderedNodes.map(node => ({ id: node.id, domain: node.domain }))}
+                    edgePaths={edgePaths}
+                    mode={animMode}
+                    activeScenario={activeScenario}
+                    speed={FIXED_SIM_SPEED}
+                    isAnimating={isAnimating}
+                    activeEdgeIds={scenarioActiveEdgeIds}
+                    domainColors={domainColors}
+                  />
+                )}
+
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="rgba(186,202,248,0.9)" />
+                  </marker>
+                </defs>
+              </svg>
+
+              {renderedNodes.map(node => {
+                const isDimmed = connectedNodeIds.size > 0 && !connectedNodeIds.has(node.id);
+                const isScenarioPlaying = animMode === 'scenario' && isAnimating && activeScenario;
+                const isScenarioDimmed = isScenarioPlaying && !activeNodeIds.has(node.id);
+                const isSelected = selectedNodeId === node.id || highlightedNodeId === node.id;
+                const borderColor = domainColors[node.domain] || colorFromDomain(node.domain);
+                const nodeStyle: CSSProperties & Record<string, string | number> = {
+                  left: node.x,
+                  top: node.y,
+                  width: node.width,
+                  height: node.height,
+                  borderColor: `${borderColor}B3`,
+                  background: node.kind === 'domain' ? 'rgba(8,13,22,0.84)' : 'rgba(7,10,17,0.82)',
+                  boxShadow: `0 0 0 1px ${borderColor}24`,
+                  opacity: isScenarioDimmed ? 0.25 : (isDimmed ? 0.4 : 1),
+                  '--domain-color': borderColor,
+                };
+                return (
                   <button
-                    onClick={() => setSelectedNodeId(null)}
-                    className="absolute right-3 top-3 text-sm text-gray-500 transition-colors hover:text-white"
-                    aria-label="Close details"
+                    key={node.id}
+                    onMouseEnter={() => setHoveredNodeId(node.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
+                    className={`absolute rounded-xl border text-left transition-all ${isSelected ? 'node-selected' : ''}`}
+                    style={nodeStyle}
                   >
-                    x
+                    <div className="p-3">
+                      <div className="mt-1 truncate text-sm font-semibold text-white">{node.label}</div>
+                      <div className="mt-1 line-clamp-2 text-xs text-gray-300">
+                        {nodeDescription(node)}
+                      </div>
+                    </div>
                   </button>
-                  <div className="space-y-3 p-5">
-                    <div
-                      className="text-[11px] uppercase tracking-wide"
-                      style={{ color: domainColors[selectedNode.domain] || colorFromDomain(selectedNode.domain) }}
-                    >
-                      {selectedNode.domain}
-                    </div>
-                    <div className="text-base font-semibold text-white">{selectedNode.label}</div>
-                    {selectedNode.businessRole && (
-                      <div className="text-xs text-indigo-200">
-                        {simplifyForFounder(selectedNode.businessRole, founderMode)}
-                      </div>
-                    )}
-                    <p className="text-sm leading-relaxed text-gray-300">
-                      {founderMode && founderDescriptions?.[selectedNode.id]
-                        ? founderDescriptions[selectedNode.id]
-                        : simplifyForFounder(
-                          selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
-                          founderMode
-                        )}
-                    </p>
-                    <div className="flex gap-2 text-xs">
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                        {selectedNode.kind}
-                      </span>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
-                        {selectedNode.fileCount} files
-                      </span>
-                    </div>
-                    <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-gray-400">
-                      Think of this as the {businessAnalogy(selectedNode.kind)}.
-                    </div>
-                    {selectedNodeEdgeInsights.length > 0 && (
-                      <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-3">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-400">Connected Flows</div>
-                        {selectedNodeEdgeInsights.map(edge => (
-                          <div key={`edge-insight-${edge.id}`} className="text-xs text-gray-300">
-                            <div className="font-semibold text-gray-200">{edge.label}</div>
-                            {edge.data_flow && (
-                              <div className="mt-0.5">{simplifyForFounder(edge.data_flow, founderMode)}</div>
-                            )}
-                            {edge.trigger && (
-                              <div className="mt-0.5 text-gray-400">
-                                Trigger: {simplifyForFounder(edge.trigger, founderMode)}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
+
+            {selectedNode && popupPosition && (
+              <div
+                className={`animate-fade-in z-30 w-80 rounded-2xl border border-white/15 bg-[#0a0f1a]/95 shadow-2xl shadow-black/40 backdrop-blur-xl ${
+                  popupPosition.mode === 'absolute' ? 'absolute' : ''
+                }`}
+                style={{
+                  left: popupPosition.left,
+                  top: popupPosition.top,
+                  position: popupPosition.mode,
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  onClick={() => setSelectedNodeId(null)}
+                  className="absolute right-3 top-3 text-sm text-gray-500 transition-colors hover:text-white"
+                  aria-label="Close details"
+                >
+                  x
+                </button>
+                <div className="space-y-3 p-5">
+                  <div
+                    className="text-[11px] uppercase tracking-wide"
+                    style={{ color: domainColors[selectedNode.domain] || colorFromDomain(selectedNode.domain) }}
+                  >
+                    {selectedNode.domain}
+                  </div>
+                  <div className="text-base font-semibold text-white">{selectedNode.label}</div>
+                  {selectedNode.businessRole && (
+                    <div className="text-xs text-indigo-200">
+                      {simplifyForFounder(selectedNode.businessRole, founderMode)}
+                    </div>
+                  )}
+                  <p className="text-sm leading-relaxed text-gray-300">
+                    {founderMode && founderDescriptions?.[selectedNode.id]
+                      ? founderDescriptions[selectedNode.id]
+                      : simplifyForFounder(
+                        selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
+                        founderMode
+                      )}
+                  </p>
+                  <div className="flex gap-2 text-xs">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                      {selectedNode.kind}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">
+                      {selectedNode.fileCount} files
+                    </span>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-gray-400">
+                    Think of this as the {businessAnalogy(selectedNode.kind)}.
+                  </div>
+                  {selectedNodeEdgeInsights.length > 0 && (
+                    <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-400">Connected Flows</div>
+                      {selectedNodeEdgeInsights.map(edge => (
+                        <div key={`edge-insight-${edge.id}`} className="text-xs text-gray-300">
+                          <div className="font-semibold text-gray-200">{edge.label}</div>
+                          {edge.data_flow && (
+                            <div className="mt-0.5">{simplifyForFounder(edge.data_flow, founderMode)}</div>
+                          )}
+                          {edge.trigger && (
+                            <div className="mt-0.5 text-gray-400">
+                              Trigger: {simplifyForFounder(edge.trigger, founderMode)}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+
+  if (isFullscreen && typeof document !== 'undefined') {
+    return createPortal(diagramContent, document.body);
+  }
+
+  return diagramContent;
 }

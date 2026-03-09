@@ -27,6 +27,24 @@ const architecture = {
 };
 
 describe('ArchitectureDiagram', () => {
+  it('toggles fullscreen and restores body overflow', () => {
+    document.body.style.overflow = 'auto';
+    const { unmount } = render(<ArchitectureDiagram architecture={architecture} highlightedNodeId={null} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand/i }));
+    const fullscreenRoot = screen.getByTestId('architecture-diagram-root');
+    expect(fullscreenRoot.className).toContain('fixed');
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(screen.getByRole('button', { name: /Exit/i }));
+    expect(document.body.style.overflow).toBe('auto');
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand/i }));
+    expect(document.body.style.overflow).toBe('hidden');
+    unmount();
+    expect(document.body.style.overflow).toBe('auto');
+  });
+
   it('renders key nodes and opens floating detail popup on click', () => {
     render(<ArchitectureDiagram architecture={architecture} highlightedNodeId={null} />);
 
