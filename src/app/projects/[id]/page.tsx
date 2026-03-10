@@ -12,6 +12,7 @@ import JourneyMap from '@/components/JourneyMap';
 import TechStackDashboard from '@/components/TechStackDashboard';
 import QAChat from '@/components/QAChat';
 import RiskPanel from '@/components/RiskPanel';
+import VersionDiffView from '@/components/VersionDiffView';
 import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
 import { useAuth } from '@/lib/hooks/useAuth';
 
@@ -71,6 +72,10 @@ interface AnalysisVersion {
   id: string;
   analyzed_at: string;
   is_latest: boolean;
+  branch?: string | null;
+  commit_hash?: string | null;
+  commit_url?: string | null;
+  summary?: string | null;
 }
 
 export default function ProjectDetail() {
@@ -471,6 +476,7 @@ export default function ProjectDetail() {
 
   const tabs = [
     { id: 'architecture', label: 'Architecture' },
+    { id: 'version-diff', label: 'Version Diff' },
     { id: 'journeys', label: 'Business Flows' },
     { id: 'techstack', label: 'Tech Stack' },
     { id: 'risks', label: 'Risks' },
@@ -727,6 +733,14 @@ export default function ProjectDetail() {
                 </div>
               )}
             </>
+          )}
+
+          {activeTab === 'version-diff' && (
+            <VersionDiffView
+              projectId={projectId}
+              versions={versions}
+              founderMode={founderMode}
+            />
           )}
 
           {activeTab === 'techstack' && (

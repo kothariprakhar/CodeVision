@@ -1,0 +1,552 @@
+import type {
+  AnalysisResult,
+  ArchitectureEdge,
+  ArchitectureNode,
+  Journey,
+} from '@/lib/db';
+
+export type DiffChangeType = 'added' | 'removed' | 'modified' | 'unchanged';
+
+export interface VersionSnapshot {
+  analysis_id: string;
+  analyzed_at: string;
+  branch?: string;
+  commit_hash?: string;
+  commit_url?: string;
+}
+
+export interface ModuleDiff {
+  id: string;
+  name: string;
+  status: DiffChangeType;
+  reasons: string[];
+  before?: ArchitectureNode;
+  after?: ArchitectureNode;
+  degree_before: number;
+  degree_after: number;
+}
+
+export interface EdgeDiff {
+  id: string;
+  from: string;
+  to: string;
+  edge_type: ArchitectureEdge['type'];
+  status: DiffChangeType;
+  label_before?: string;
+  label_after?: string;
+}
+
+export interface JourneyDiff {
+  id: string;
+  name: string;
+  status: DiffChangeType;
+  before_steps: number;
+  after_steps: number;
+  summary: string;
+}
+
+export interface RiskDiff {
+  key: string;
+  title: string;
+  status: DiffChangeType;
+  severity_before?: string;
+  severity_after?: string;
+}
+
+export interface TechDiff {
+  name: string;
+  status: DiffChangeType;
+}
+
+export interface VersionDiffSummary {
+  modules_added: number;
+  modules_removed: number;
+  modules_modified: number;
+  edges_added: number;
+  edges_removed: number;
+  edges_modified: number;
+  journeys_added: number;
+  journeys_removed: number;
+  journeys_modified: number;
+  risks_increased: number;
+  risks_decreased: number;
+  tech_added: number;
+  tech_removed: number;
+}
+
+export interface VersionDiffResult {
+  from: VersionSnapshot;
+  to: VersionSnapshot;
+  summary: VersionDiffSummary;
+  module_changes: ModuleDiff[];
+  edge_changes: EdgeDiff[];
+  journey_changes: JourneyDiff[];
+  risk_changes: RiskDiff[];
+  tech_changes: TechDiff[];
+  business_impact_notes: string[];
+  generated_at: string;
+}
+
+interface CacheRecord {
+  value: VersionDiffResult;
+  expires_at: number;
+}
+
+const DIFF_CACHE_TTL_MS = 10 * 60 * 1000;
+const diffCache = new Map<string, CacheRecord>();
+
+function normalize(value: string): string {
+  return value.toLowerCase().trim();
+}
+
+function hashSet(values: string[]): string {
+  return [...new Set(values)].sort().join('|');
+}
+
+function edgeKey(edge: ArchitectureEdge): string {
+  return `${edge.from}|${edge.to}|${edge.type}`;
+}
+
+function journeyKey(journey: Journey): string {
+  return journey.id || normalize(journey.name);
+}
+
+function journeySignature(journey: Journey): string {
+  const steps = journey.steps
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map(step => `${step.order}:${normalize(step.name)}:${hashSet(step.systems_touched)}`);
+  return steps.join('>');
+}
+
+function extractTechSet(analysis: AnalysisResult): Set<string> {
+  const tech = new Set<string>();
+
+  (analysis.business_context?.external_deps || []).forEach(dep => {
+    if (dep.name) tech.add(dep.name);
+  });
+
+  try {
+    const parsed = JSON.parse(analysis.raw_response) as Record<string, unknown>;
+
+    const pass1 = parsed.pass1 as Record<string, unknown> | undefined;
+    const summaries = pass1?.module_summaries as Record<string, unknown> | undefined;
+    if (summaries && typeof summaries === 'object') {
+      Object.values(summaries).forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        const technologies = (entry as { key_technologies?: unknown }).key_technologies;
+        if (Array.isArray(technologies)) {
+          technologies.forEach((item) => {
+            if (typeof item === 'string' && item.trim()) tech.add(item.trim());
+          });
+        }
+      });
+    }
+
+    const deterministic = parsed.deterministic_signals as Record<string, unknown> | undefined;
+    const repoMeta = deterministic?.repo_metadata as Record<string, unknown> | undefined;
+    if (repoMeta && typeof repoMeta.primary_language === 'string' && repoMeta.primary_language.trim()) {
+      tech.add(repoMeta.primary_language.trim());
+    }
+  } catch {
+    // Best effort extraction from raw_response.
+  }
+
+  return tech;
+}
+
+function computeDegrees(edges: ArchitectureEdge[]): Map<string, number> {
+  const degrees = new Map<string, number>();
+  edges.forEach((edge) => {
+    degrees.set(edge.from, (degrees.get(edge.from) || 0) + 1);
+    degrees.set(edge.to, (degrees.get(edge.to) || 0) + 1);
+  });
+  return degrees;
+}
+
+function moduleReasons(before: ArchitectureNode, after: ArchitectureNode): string[] {
+  const reasons: string[] = [];
+  if (before.type !== after.type) reasons.push('Module type changed');
+  if (before.complexity !== after.complexity) reasons.push('Complexity changed');
+  if ((before.description || '') !== (after.description || '')) reasons.push('Description changed');
+  if ((before.business_role || '') !== (after.business_role || '')) reasons.push('Business role changed');
+
+  const beforeFiles = new Set(before.files || []);
+  const afterFiles = new Set(after.files || []);
+  if (beforeFiles.size !== afterFiles.size || hashSet([...beforeFiles]) !== hashSet([...afterFiles])) {
+    reasons.push('File footprint changed');
+  }
+  return reasons;
+}
+
+function calculateModuleDiff(before: AnalysisResult, after: AnalysisResult): ModuleDiff[] {
+  const beforeNodes = before.architecture?.nodes || [];
+  const afterNodes = after.architecture?.nodes || [];
+  const beforeMap = new Map(beforeNodes.map(node => [node.id, node]));
+  const afterMap = new Map(afterNodes.map(node => [node.id, node]));
+  const ids = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const beforeDegrees = computeDegrees(before.architecture?.edges || []);
+  const afterDegrees = computeDegrees(after.architecture?.edges || []);
+
+  const changes: ModuleDiff[] = [];
+  ids.forEach((id) => {
+    const beforeNode = beforeMap.get(id);
+    const afterNode = afterMap.get(id);
+    if (!beforeNode && afterNode) {
+      changes.push({
+        id,
+        name: afterNode.name,
+        status: 'added',
+        reasons: ['New module introduced'],
+        after: afterNode,
+        degree_before: 0,
+        degree_after: afterDegrees.get(id) || 0,
+      });
+      return;
+    }
+    if (beforeNode && !afterNode) {
+      changes.push({
+        id,
+        name: beforeNode.name,
+        status: 'removed',
+        reasons: ['Module removed'],
+        before: beforeNode,
+        degree_before: beforeDegrees.get(id) || 0,
+        degree_after: 0,
+      });
+      return;
+    }
+    if (!beforeNode || !afterNode) return;
+    const reasons = moduleReasons(beforeNode, afterNode);
+    changes.push({
+      id,
+      name: afterNode.name,
+      status: reasons.length ? 'modified' : 'unchanged',
+      reasons,
+      before: beforeNode,
+      after: afterNode,
+      degree_before: beforeDegrees.get(id) || 0,
+      degree_after: afterDegrees.get(id) || 0,
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function calculateEdgeDiff(before: AnalysisResult, after: AnalysisResult): EdgeDiff[] {
+  const beforeEdges = before.architecture?.edges || [];
+  const afterEdges = after.architecture?.edges || [];
+  const beforeMap = new Map(beforeEdges.map(edge => [edgeKey(edge), edge]));
+  const afterMap = new Map(afterEdges.map(edge => [edgeKey(edge), edge]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const changes: EdgeDiff[] = [];
+  keys.forEach((key) => {
+    const beforeEdge = beforeMap.get(key);
+    const afterEdge = afterMap.get(key);
+    if (!beforeEdge && afterEdge) {
+      changes.push({
+        id: key,
+        from: afterEdge.from,
+        to: afterEdge.to,
+        edge_type: afterEdge.type,
+        status: 'added',
+        label_after: afterEdge.label,
+      });
+      return;
+    }
+    if (beforeEdge && !afterEdge) {
+      changes.push({
+        id: key,
+        from: beforeEdge.from,
+        to: beforeEdge.to,
+        edge_type: beforeEdge.type,
+        status: 'removed',
+        label_before: beforeEdge.label,
+      });
+      return;
+    }
+    if (!beforeEdge || !afterEdge) return;
+    const labelChanged = (beforeEdge.label || '') !== (afterEdge.label || '');
+    changes.push({
+      id: key,
+      from: afterEdge.from,
+      to: afterEdge.to,
+      edge_type: afterEdge.type,
+      status: labelChanged ? 'modified' : 'unchanged',
+      label_before: beforeEdge.label,
+      label_after: afterEdge.label,
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function calculateJourneyDiff(before: AnalysisResult, after: AnalysisResult): JourneyDiff[] {
+  const beforeJourneys = before.journey_graph?.journeys || [];
+  const afterJourneys = after.journey_graph?.journeys || [];
+  const beforeMap = new Map(beforeJourneys.map(journey => [journeyKey(journey), journey]));
+  const afterMap = new Map(afterJourneys.map(journey => [journeyKey(journey), journey]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const changes: JourneyDiff[] = [];
+  keys.forEach((key) => {
+    const beforeJourney = beforeMap.get(key);
+    const afterJourney = afterMap.get(key);
+
+    if (!beforeJourney && afterJourney) {
+      changes.push({
+        id: afterJourney.id,
+        name: afterJourney.name,
+        status: 'added',
+        before_steps: 0,
+        after_steps: afterJourney.steps.length,
+        summary: 'New journey introduced',
+      });
+      return;
+    }
+    if (beforeJourney && !afterJourney) {
+      changes.push({
+        id: beforeJourney.id,
+        name: beforeJourney.name,
+        status: 'removed',
+        before_steps: beforeJourney.steps.length,
+        after_steps: 0,
+        summary: 'Journey removed',
+      });
+      return;
+    }
+    if (!beforeJourney || !afterJourney) return;
+
+    const signatureChanged = journeySignature(beforeJourney) !== journeySignature(afterJourney);
+    const metaChanged = beforeJourney.goal !== afterJourney.goal || beforeJourney.persona !== afterJourney.persona;
+    const isModified = signatureChanged || metaChanged;
+    changes.push({
+      id: afterJourney.id,
+      name: afterJourney.name,
+      status: isModified ? 'modified' : 'unchanged',
+      before_steps: beforeJourney.steps.length,
+      after_steps: afterJourney.steps.length,
+      summary: isModified ? 'Journey flow changed' : 'No significant change',
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function calculateRiskDiff(before: AnalysisResult, after: AnalysisResult): RiskDiff[] {
+  const beforeFindings = before.findings || [];
+  const afterFindings = after.findings || [];
+  const beforeMap = new Map(beforeFindings.map(finding => [normalize(finding.title), finding]));
+  const afterMap = new Map(afterFindings.map(finding => [normalize(finding.title), finding]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const changes: RiskDiff[] = [];
+  keys.forEach((key) => {
+    const beforeFinding = beforeMap.get(key);
+    const afterFinding = afterMap.get(key);
+    if (!beforeFinding && afterFinding) {
+      changes.push({
+        key,
+        title: afterFinding.title,
+        status: 'added',
+        severity_after: afterFinding.severity,
+      });
+      return;
+    }
+    if (beforeFinding && !afterFinding) {
+      changes.push({
+        key,
+        title: beforeFinding.title,
+        status: 'removed',
+        severity_before: beforeFinding.severity,
+      });
+      return;
+    }
+    if (!beforeFinding || !afterFinding) return;
+
+    const status: DiffChangeType = beforeFinding.severity !== afterFinding.severity ? 'modified' : 'unchanged';
+    changes.push({
+      key,
+      title: afterFinding.title,
+      status,
+      severity_before: beforeFinding.severity,
+      severity_after: afterFinding.severity,
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function calculateTechDiff(before: AnalysisResult, after: AnalysisResult): TechDiff[] {
+  const beforeTech = extractTechSet(before);
+  const afterTech = extractTechSet(after);
+  const all = new Set([...beforeTech, ...afterTech]);
+
+  const changes: TechDiff[] = [];
+  all.forEach((name) => {
+    const inBefore = beforeTech.has(name);
+    const inAfter = afterTech.has(name);
+    if (!inBefore && inAfter) {
+      changes.push({ name, status: 'added' });
+      return;
+    }
+    if (inBefore && !inAfter) {
+      changes.push({ name, status: 'removed' });
+      return;
+    }
+    changes.push({ name, status: 'unchanged' });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { added: 0, removed: 1, unchanged: 2, modified: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function severityWeight(severity: string): number {
+  if (severity === 'critical') return 4;
+  if (severity === 'high') return 3;
+  if (severity === 'medium') return 2;
+  return 1;
+}
+
+function buildBusinessImpactNotes(
+  moduleChanges: ModuleDiff[],
+  journeyChanges: JourneyDiff[],
+  riskChanges: RiskDiff[],
+  techChanges: TechDiff[]
+): string[] {
+  const notes: string[] = [];
+  const modulesAdded = moduleChanges.filter(item => item.status === 'added').length;
+  const modulesRemoved = moduleChanges.filter(item => item.status === 'removed').length;
+  const modulesModified = moduleChanges.filter(item => item.status === 'modified').length;
+  if (modulesAdded > 0) notes.push(`${modulesAdded} new modules were introduced, expanding system capability.`);
+  if (modulesRemoved > 0) notes.push(`${modulesRemoved} modules were removed, which may simplify maintenance or reduce scope.`);
+  if (modulesModified > 0) notes.push(`${modulesModified} core modules changed behavior or structure.`);
+
+  const journeysChanged = journeyChanges.filter(item => item.status !== 'unchanged').length;
+  if (journeysChanged > 0) notes.push(`${journeysChanged} user journeys changed, potentially affecting product experience.`);
+
+  const riskDelta = riskChanges.reduce((acc, item) => {
+    if (item.status !== 'modified') return acc;
+    return acc + severityWeight(item.severity_after || 'low') - severityWeight(item.severity_before || 'low');
+  }, 0);
+  if (riskDelta > 0) notes.push('Overall risk profile increased; review high-severity findings before release.');
+  if (riskDelta < 0) notes.push('Risk profile improved compared to the previous version.');
+
+  const techAdded = techChanges.filter(item => item.status === 'added').length;
+  const techRemoved = techChanges.filter(item => item.status === 'removed').length;
+  if (techAdded > 0) notes.push(`${techAdded} technologies were added, increasing implementation breadth.`);
+  if (techRemoved > 0) notes.push(`${techRemoved} technologies were removed, reducing stack complexity.`);
+
+  if (notes.length === 0) {
+    notes.push('No major architecture or business-impacting changes were detected between these versions.');
+  }
+
+  return notes;
+}
+
+function getCachedDiff(cacheKey: string): VersionDiffResult | null {
+  const record = diffCache.get(cacheKey);
+  if (!record) return null;
+  if (Date.now() > record.expires_at) {
+    diffCache.delete(cacheKey);
+    return null;
+  }
+  return record.value;
+}
+
+function setCachedDiff(cacheKey: string, value: VersionDiffResult): void {
+  diffCache.set(cacheKey, {
+    value,
+    expires_at: Date.now() + DIFF_CACHE_TTL_MS,
+  });
+}
+
+export function buildVersionDiff(before: AnalysisResult, after: AnalysisResult): VersionDiffResult {
+  const cacheKey = `${before.id}:${after.id}`;
+  const cached = getCachedDiff(cacheKey);
+  if (cached) return cached;
+
+  const moduleChanges = calculateModuleDiff(before, after);
+  const edgeChanges = calculateEdgeDiff(before, after);
+  const journeyChanges = calculateJourneyDiff(before, after);
+  const riskChanges = calculateRiskDiff(before, after);
+  const techChanges = calculateTechDiff(before, after);
+
+  const risksIncreased = riskChanges.filter(change => {
+    if (change.status !== 'modified') return false;
+    return severityWeight(change.severity_after || 'low') > severityWeight(change.severity_before || 'low');
+  }).length;
+  const risksDecreased = riskChanges.filter(change => {
+    if (change.status !== 'modified') return false;
+    return severityWeight(change.severity_after || 'low') < severityWeight(change.severity_before || 'low');
+  }).length;
+
+  const result: VersionDiffResult = {
+    from: {
+      analysis_id: before.id,
+      analyzed_at: before.analyzed_at,
+      branch: before.branch,
+      commit_hash: before.commit_hash,
+      commit_url: before.commit_url,
+    },
+    to: {
+      analysis_id: after.id,
+      analyzed_at: after.analyzed_at,
+      branch: after.branch,
+      commit_hash: after.commit_hash,
+      commit_url: after.commit_url,
+    },
+    summary: {
+      modules_added: moduleChanges.filter(item => item.status === 'added').length,
+      modules_removed: moduleChanges.filter(item => item.status === 'removed').length,
+      modules_modified: moduleChanges.filter(item => item.status === 'modified').length,
+      edges_added: edgeChanges.filter(item => item.status === 'added').length,
+      edges_removed: edgeChanges.filter(item => item.status === 'removed').length,
+      edges_modified: edgeChanges.filter(item => item.status === 'modified').length,
+      journeys_added: journeyChanges.filter(item => item.status === 'added').length,
+      journeys_removed: journeyChanges.filter(item => item.status === 'removed').length,
+      journeys_modified: journeyChanges.filter(item => item.status === 'modified').length,
+      risks_increased: risksIncreased,
+      risks_decreased: risksDecreased,
+      tech_added: techChanges.filter(item => item.status === 'added').length,
+      tech_removed: techChanges.filter(item => item.status === 'removed').length,
+    },
+    module_changes: moduleChanges,
+    edge_changes: edgeChanges,
+    journey_changes: journeyChanges,
+    risk_changes: riskChanges,
+    tech_changes: techChanges,
+    business_impact_notes: buildBusinessImpactNotes(moduleChanges, journeyChanges, riskChanges, techChanges),
+    generated_at: new Date().toISOString(),
+  };
+
+  setCachedDiff(cacheKey, result);
+  return result;
+}
+
