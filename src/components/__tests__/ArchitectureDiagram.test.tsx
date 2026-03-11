@@ -20,9 +20,18 @@ const architecture = {
       description: 'Core backend',
       files: ['src/app/api/repo/analyze/route.ts'],
     },
+    {
+      id: 'ext',
+      name: 'lucide-react',
+      type: 'external' as const,
+      complexity: 'low' as const,
+      description: 'External dependency: lucide-react',
+      files: [],
+    },
   ],
   edges: [
     { from: 'web', to: 'api', type: 'calls' as const },
+    { from: 'web', to: 'ext', type: 'imports' as const, label: 'Depends on lucide-react' },
   ],
 };
 
@@ -58,5 +67,15 @@ describe('ArchitectureDiagram', () => {
     expect(screen.getAllByText('API Service').length).toBeGreaterThan(0);
     expect(screen.getByText(/Think of this as the/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Close details/i })).toBeInTheDocument();
+  });
+
+  it('keeps founder copy meaningful without duplicated terms', () => {
+    render(<ArchitectureDiagram architecture={architecture} highlightedNodeId={null} founderMode />);
+
+    const externalNodes = screen.getAllByRole('button', { name: /lucide-react/i });
+    fireEvent.click(externalNodes[externalNodes.length - 1]);
+
+    expect(screen.queryByText(/external external/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/third-party integration/i).length).toBeGreaterThan(0);
   });
 });

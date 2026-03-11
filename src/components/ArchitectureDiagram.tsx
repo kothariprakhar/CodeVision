@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { simplifyForFounder } from '@/lib/utils/founder-language';
+import { normalizeDiagramText, sanitizeDiagramText } from '@/lib/utils/text-quality';
 import type { BusinessFlow } from './BusinessFlowView';
 import { buildDomainColors, buildNodeDomainMap, colorFromDomain } from './diagram/domain-utils';
 import type { ArchitectureDomain, ArchitectureVisualization } from './diagram/types';
@@ -52,10 +53,6 @@ function titleCase(input: string): string {
   return input.charAt(0).toUpperCase() + input.slice(1);
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
-}
-
 function inferNodeKind(type: string, name: string): Exclude<DiagramNodeKind, 'domain'> {
   const joined = `${type} ${name}`.toLowerCase();
   if (/(database|db|storage|cache|redis|postgres|mongo)/.test(joined)) return 'database';
@@ -83,9 +80,9 @@ function buildDetailedLayout(
 ): { nodes: RenderNode[]; edges: RenderEdge[]; width: number; height: number } {
   const rankedNodes = architecture.nodes.map(node => ({
     id: node.id,
-    label: node.name,
-    description: node.description || '',
-    businessRole: node.business_role || '',
+    label: sanitizeDiagramText(node.name, 'node_label', { target: node.name }),
+    description: sanitizeDiagramText(node.description || '', 'node_description', { target: node.name }),
+    businessRole: normalizeDiagramText(node.business_role || ''),
     domain: nodeDomains.get(node.id) || 'core',
     kind: inferNodeKind(node.type, node.name),
     fileCount: node.files?.length || 0,
@@ -198,9 +195,13 @@ function buildDetailedLayout(
         from: edge.from,
         to: edge.to,
         type: edge.type,
-        label: edge.label || visual.label,
-        data_flow: edge.data_flow,
-        trigger: edge.trigger,
+        label: sanitizeDiagramText(
+          edge.label || visual.label,
+          'edge_label',
+          { relation: edge.type, source: edge.from, target: edge.to.replace(/^external:/, '') }
+        ),
+        data_flow: edge.data_flow ? normalizeDiagramText(edge.data_flow) : edge.data_flow,
+        trigger: edge.trigger ? normalizeDiagramText(edge.trigger) : edge.trigger,
         styleKind: visual.styleKind,
         weight: edgeWeightByPair.get(key) || 1,
       };
@@ -242,7 +243,9 @@ function buildGroupedLayout(
     return {
       id: `domain:${domain}`,
       label: `${titleCase(domain)} Domain`,
-      description: `${counts.get(domain) || 0} major modules`,
+      description: sanitizeDiagramText(`${counts.get(domain) || 0} major modules`, 'node_description', {
+        target: `${titleCase(domain)} domain`,
+      }),
       domain,
       kind: 'domain',
       fileCount: counts.get(domain) || 0,
@@ -270,7 +273,11 @@ function buildGroupedLayout(
       from: `domain:${sourceDomain}`,
       to: `domain:${targetDomain}`,
       type: 'imports',
-      label: `${weight} connections`,
+      label: sanitizeDiagramText(`Connects ${sourceDomain} to ${targetDomain}`, 'edge_label', {
+        relation: 'imports',
+        source: sourceDomain,
+        target: targetDomain,
+      }),
       styleKind: 'data_flow',
       weight,
     };
@@ -728,9 +735,9 @@ export default function ArchitectureDiagram({
 
   const nodeDescription = (node: RenderNode): string => {
     if (founderMode && founderDescriptions?.[node.id]) {
-      return founderDescriptions[node.id];
+      return normalizeDiagramText(founderDescriptions[node.id]);
     }
-    return simplifyForFounder(node.description || 'Core system module', founderMode);
+    return normalizeDiagramText(simplifyForFounder(node.description || 'Core system module', founderMode));
   };
 
   const diagramContent = (
@@ -907,7 +914,7 @@ export default function ArchitectureDiagram({
                           textAnchor="middle"
                           opacity={0.85}
                         >
-                          {edge.label}
+                          {normalizeDiagramText(edge.label)}
                         </text>
                       )}
                     </g>
@@ -1004,15 +1011,17 @@ export default function ArchitectureDiagram({
                   <div className="text-base font-semibold text-white">{selectedNode.label}</div>
                   {selectedNode.businessRole && (
                     <div className="text-xs text-indigo-200">
-                      {simplifyForFounder(selectedNode.businessRole, founderMode)}
+                      {normalizeDiagramText(simplifyForFounder(selectedNode.businessRole, founderMode))}
                     </div>
                   )}
                   <p className="text-sm leading-relaxed text-gray-300">
                     {founderMode && founderDescriptions?.[selectedNode.id]
-                      ? founderDescriptions[selectedNode.id]
-                      : simplifyForFounder(
-                        selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
-                        founderMode
+                      ? normalizeDiagramText(founderDescriptions[selectedNode.id])
+                      : normalizeDiagramText(
+                        simplifyForFounder(
+                          selectedNode.description || `${selectedNode.label} supports a core capability in this system.`,
+                          founderMode
+                        )
                       )}
                   </p>
                   <div className="flex gap-2 text-xs">
@@ -1031,13 +1040,13 @@ export default function ArchitectureDiagram({
                       <div className="text-[11px] uppercase tracking-wide text-gray-400">Connected Flows</div>
                       {selectedNodeEdgeInsights.map(edge => (
                         <div key={`edge-insight-${edge.id}`} className="text-xs text-gray-300">
-                          <div className="font-semibold text-gray-200">{edge.label}</div>
+                          <div className="font-semibold text-gray-200">{normalizeDiagramText(edge.label)}</div>
                           {edge.data_flow && (
-                            <div className="mt-0.5">{simplifyForFounder(edge.data_flow, founderMode)}</div>
+                            <div className="mt-0.5">{normalizeDiagramText(simplifyForFounder(edge.data_flow, founderMode))}</div>
                           )}
                           {edge.trigger && (
                             <div className="mt-0.5 text-gray-400">
-                              Trigger: {simplifyForFounder(edge.trigger, founderMode)}
+                              Trigger: {normalizeDiagramText(simplifyForFounder(edge.trigger, founderMode))}
                             </div>
                           )}
                         </div>

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
+import { normalizeDiagramText, sanitizeDiagramText } from '../utils/text-quality';
 import type { FileEntry } from './chunker-service';
 import type { ParsedDocument } from './file-parser';
 import type { ArchPattern, DependencyGraph, ParsedFile } from './parser-service';
@@ -636,12 +637,13 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
   externalTargets.forEach(target => {
     const id = `external:${target}`;
     if (!nodeIds.has(id)) {
+      const readableTarget = normalizeDiagramText(target);
       nodes.push({
         id,
-        name: target,
+        name: readableTarget || target,
         type: 'external',
         complexity: 'low',
-        description: `External dependency: ${target}`,
+        description: `Third-party integration used by this system: ${readableTarget || target}`,
         files: [],
       });
       nodeIds.add(id);
@@ -654,19 +656,39 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
     if (!sourceModule || !nodeIds.has(sourceModule)) continue;
     const targetId = edge.target;
     if (!nodeIds.has(targetId)) continue;
+    const targetName = normalizeDiagramText(targetId.replace(/^external:/, '')) || targetId.replace(/^external:/, '');
     uniqueEdges.set(`${sourceModule}->${targetId}->imports`, {
       from: sourceModule,
       to: targetId,
       type: 'imports',
-      label: `Depends on ${targetId.replace(/^external:/, '')}`,
+      label: `Uses ${targetName}`,
       data_flow: 'Calls or imports external dependency capabilities.',
       trigger: 'Runtime integration path.',
     });
   }
 
+  const normalizedNodes = nodes.map((node) => ({
+    ...node,
+    name: sanitizeDiagramText(node.name, 'node_label', { target: node.name }),
+    description: sanitizeDiagramText(node.description, 'node_description', { target: node.name }),
+  }));
+
+  const normalizedEdges = Array.from(uniqueEdges.values())
+    .slice(0, 180)
+    .map((edge) => ({
+      ...edge,
+      label: sanitizeDiagramText(edge.label || '', 'edge_label', {
+        relation: edge.type,
+        source: edge.from,
+        target: edge.to.replace(/^external:/, ''),
+      }),
+      data_flow: edge.data_flow ? normalizeDiagramText(edge.data_flow) : edge.data_flow,
+      trigger: edge.trigger ? normalizeDiagramText(edge.trigger) : edge.trigger,
+    }));
+
   return {
-    nodes,
-    edges: Array.from(uniqueEdges.values()).slice(0, 180),
+    nodes: normalizedNodes,
+    edges: normalizedEdges,
   };
 }
 

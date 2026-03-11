@@ -3,6 +3,7 @@ import {
   buildRiskSnapshot,
   buildTechStackSnapshot,
 } from './tech-risk-engine';
+import { normalizeDiagramText, sanitizeDiagramText } from '@/lib/utils/text-quality';
 
 export interface DiagramNodeView {
   id: string;
@@ -98,10 +99,14 @@ export function buildDiagramView(analysis: AnalysisResult): { nodes: DiagramNode
       || inferDomain(`${node.name} ${node.description} ${(node.files || []).join(' ')}`);
     return {
       id: node.id,
-      label: node.name,
+      label: sanitizeDiagramText(node.name, 'node_label', { target: node.name }),
       type: mapNodeType(node.type, node.name),
       domain,
-      description: node.description || '',
+      description: sanitizeDiagramText(
+        node.description || '',
+        'node_description',
+        { target: node.name }
+      ),
       files: node.files || [],
     };
   });
@@ -113,15 +118,23 @@ export function buildDiagramView(analysis: AnalysisResult): { nodes: DiagramNode
       source: edge.from,
       target: edge.to,
       type: mapEdgeType(edge.type, edge.label || edge.type),
-      label: edge.label || (edge.type === 'stores'
-        ? 'reads/writes data'
-        : edge.type === 'calls'
-          ? 'triggers action'
-          : edge.type === 'renders'
-            ? 'renders view'
-            : 'sends data to'),
-      data_flow: edge.data_flow,
-      trigger: edge.trigger,
+      label: sanitizeDiagramText(
+        edge.label || (edge.type === 'stores'
+          ? 'reads/writes data'
+          : edge.type === 'calls'
+            ? 'triggers action'
+            : edge.type === 'renders'
+              ? 'renders view'
+              : 'sends data to'),
+        'edge_label',
+        {
+          relation: edge.type,
+          source: edge.from,
+          target: edge.to.replace(/^external:/, ''),
+        }
+      ),
+      data_flow: edge.data_flow ? normalizeDiagramText(edge.data_flow) : edge.data_flow,
+      trigger: edge.trigger ? normalizeDiagramText(edge.trigger) : edge.trigger,
     }));
 
   return { nodes, edges };

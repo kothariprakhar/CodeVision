@@ -1,3 +1,11 @@
+import { dedupeAdjacentWords, normalizeDiagramText } from './text-quality';
+
+const PHRASE_MAP: Array<[RegExp, string]> = [
+  [/\bexternal dependency\b/gi, 'third-party integration'],
+  [/\bthird-party dependency\b/gi, 'third-party integration'],
+  [/\bdependencies\b/gi, 'external reliances'],
+];
+
 const TERM_MAP: Array<[RegExp, string]> = [
   [/\bREST API\b/gi, 'system communication layer'],
   [/\bAPI endpoints?\b/gi, 'connection points between product features'],
@@ -27,8 +35,11 @@ const TERM_MAP: Array<[RegExp, string]> = [
 export function simplifyForFounder(text: string, founderMode: boolean): string {
   if (!founderMode) return text;
   let output = text;
+  PHRASE_MAP.forEach(([pattern, replacement]) => {
+    output = output.replace(pattern, replacement);
+  });
   TERM_MAP.forEach(([pattern, replacement]) => {
     output = output.replace(pattern, replacement);
   });
-  return output;
+  return normalizeDiagramText(dedupeAdjacentWords(output));
 }
