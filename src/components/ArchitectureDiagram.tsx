@@ -903,7 +903,7 @@ export default function ArchitectureDiagram({
                           x={(sx + tx) / 2}
                           y={midY - 8}
                           fill="rgba(230,236,250,0.9)"
-                          fontSize="10"
+                          fontSize="20"
                           textAnchor="middle"
                           opacity={0.85}
                         >
