@@ -65,6 +65,76 @@ describe('tech-risk-engine', () => {
     expect(tech.complexity_score).toBeLessThanOrEqual(10);
   });
 
+  it('includes external services from architecture external nodes when signatures are sparse', () => {
+    const analysis = makeAnalysis({
+      deterministic_signals: {
+        file_manifest_paths: ['src/app.tsx'],
+      },
+      pass1: {
+        module_summaries: {
+          web: { key_technologies: ['React'] },
+        },
+      },
+    });
+
+    analysis.architecture.nodes.push({
+      id: 'external:lucide-react',
+      name: 'lucide-react',
+      type: 'external',
+      complexity: 'low',
+      description: 'External icon library',
+      files: [],
+    });
+
+    const tech = buildTechStackSnapshot(analysis);
+    expect(tech.external_services.some(item => item.name === 'lucide-react')).toBe(true);
+  });
+
+  it('supports object-based pass3 external deps and business context fallback', () => {
+    const analysis = makeAnalysis({
+      pass3: {
+        external_deps: [
+          {
+            name: 'Resend',
+            why_needed: 'OTP email delivery',
+            what_breaks_without_it: 'Users cannot verify accounts',
+          },
+        ],
+      },
+    });
+    analysis.business_context = {
+      problem_statement: 'Auth platform',
+      architecture_domains: [],
+      value_features: [],
+      data_usage: [],
+      external_deps: [
+        {
+          name: 'Supabase',
+          why_needed: 'Managed auth and database',
+          what_breaks_without_it: 'No persistence and no auth',
+        },
+      ],
+      founder_narrative: {
+        executive_summary: 'summary',
+        how_it_works: 'works',
+        components: [],
+        scale_assessment: 'scale',
+        technology_choices: [],
+      },
+      technical_narrative: {
+        executive_summary: 'summary',
+        how_it_works: 'works',
+        components: [],
+        scale_assessment: 'scale',
+        technology_choices: [],
+      },
+    };
+
+    const tech = buildTechStackSnapshot(analysis);
+    expect(tech.external_services.some(item => item.name === 'Resend')).toBe(true);
+    expect(tech.external_services.some(item => item.name === 'Supabase')).toBe(true);
+  });
+
   it('returns deterministic and ai risks with totals', () => {
     const analysis = makeAnalysis({
       deterministic_signals: {

@@ -101,10 +101,10 @@ export default function ProjectDetail() {
   const [showFeedbackPrompt, setShowFeedbackPrompt] = useState(false);
   const [hasShownPrompt, setHasShownPrompt] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'slides' | null>(null);
-  const [founderMode, setFounderMode] = useState(true);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [qaExpanded, setQaExpanded] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const founderMode = true;
 
   const fetchProject = useCallback(async () => {
     try {
@@ -215,19 +215,6 @@ export default function ProjectDetail() {
       eventSourceRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem('codevision-founder-mode');
-    if (saved === 'true' || saved === 'false') {
-      setFounderMode(saved === 'true');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('codevision-founder-mode', founderMode ? 'true' : 'false');
-  }, [founderMode]);
 
   useEffect(() => {
     setExportMenuOpen(false);
@@ -459,9 +446,7 @@ export default function ProjectDetail() {
     ? new Date(analysis.analyzed_at).toLocaleString()
     : 'No analysis yet';
   const repoStars = analysis?.repo_metadata?.stars;
-  const repoLanguage = analysis?.repo_metadata?.primary_language || 'Not detected';
   const repoContributors = analysis?.repo_metadata?.contributors_count;
-  const hasFounderContent = Boolean(analysis?.founder_content);
   const activeNarrative = founderMode
     ? analysis?.business_context?.founder_narrative
     : analysis?.business_context?.technical_narrative;
@@ -518,32 +503,13 @@ export default function ProjectDetail() {
               </details>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end">
-              <button
-                onClick={() => setFounderMode(value => !value)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  founderMode
-                    ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-100'
-                    : 'border-white/15 bg-white/5 text-gray-300'
-                }`}
-              >
-                🧠 Plain Language {founderMode ? 'On' : 'Off'}
-              </button>
-              <span className="mt-1 text-[10px] text-gray-500">
-                {founderMode
-                  ? hasFounderContent
-                    ? 'AI-powered business language'
-                    : 'Simplifies technical terms automatically'
-                  : 'Toggle to simplify technical jargon'}
-              </span>
-            </div>
-            {getLastAnalyzedText() && (
+          {getLastAnalyzedText() && (
+            <div className="flex items-center gap-3">
               <span className="text-xs text-gray-500 bg-white/5 px-3 py-1.5 rounded-full whitespace-nowrap">
                 {getLastAnalyzedText()}
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -565,10 +531,6 @@ export default function ProjectDetail() {
               <div className="rounded-lg border border-white/10 bg-black/20 p-2">
                 <div className="text-gray-500">Stars</div>
                 <div className="mt-1 text-white font-semibold">{typeof repoStars === 'number' ? repoStars.toLocaleString() : 'N/A'}</div>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 p-2">
-                <div className="text-gray-500">Language</div>
-                <div className="mt-1 text-white font-semibold">{repoLanguage}</div>
               </div>
               <div className="rounded-lg border border-white/10 bg-black/20 p-2 col-span-2">
                 <div className="text-gray-500">Analysis Date</div>

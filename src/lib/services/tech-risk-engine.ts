@@ -383,6 +383,10 @@ function toTitle(input: string): string {
   return input.charAt(0).toUpperCase() + input.slice(1);
 }
 
+function normalizeExternalServiceName(input: string): string {
+  return input.replace(/^external:/i, '').trim();
+}
+
 function parseRawResponse(rawResponse: string): Record<string, unknown> | null {
   if (!rawResponse) return null;
   try {
@@ -494,11 +498,102 @@ function collectTextSignals(analysis: AnalysisResult, raw: Record<string, unknow
   if (pass3 && typeof pass3 === 'object' && !Array.isArray(pass3)) {
     const deps = (pass3 as Record<string, unknown>).external_deps;
     if (Array.isArray(deps)) {
-      values.push(...deps.filter((value): value is string => typeof value === 'string'));
+      deps.forEach((dep) => {
+        if (typeof dep === 'string') {
+          values.push(dep);
+          return;
+        }
+        if (!dep || typeof dep !== 'object' || Array.isArray(dep)) return;
+        const depObj = dep as Record<string, unknown>;
+        if (typeof depObj.name === 'string') values.push(depObj.name);
+        if (typeof depObj.why_needed === 'string') values.push(depObj.why_needed);
+        if (typeof depObj.what_breaks_without_it === 'string') values.push(depObj.what_breaks_without_it);
+      });
     }
   }
 
   return values;
+}
+
+function collectPass3ExternalServiceNames(raw: Record<string, unknown> | null): string[] {
+  const pass3 = raw?.pass3;
+  if (!pass3 || typeof pass3 !== 'object' || Array.isArray(pass3)) return [];
+  const deps = (pass3 as Record<string, unknown>).external_deps;
+  if (!Array.isArray(deps)) return [];
+
+  const names: string[] = [];
+  deps.forEach((dep) => {
+    if (typeof dep === 'string') {
+      names.push(normalizeExternalServiceName(dep));
+      return;
+    }
+    if (!dep || typeof dep !== 'object' || Array.isArray(dep)) return;
+    const depObj = dep as Record<string, unknown>;
+    if (typeof depObj.name === 'string') {
+      names.push(normalizeExternalServiceName(depObj.name));
+    }
+  });
+  return names.filter(Boolean);
+}
+
+function buildExternalServices(
+  analysis: AnalysisResult,
+  raw: Record<string, unknown> | null,
+  detected: DetectedTechnology[]
+): DetectedTechnology[] {
+  const signatureNoteByName = new Map(
+    TECH_SIGNATURES
+      .filter(item => item.category === 'service')
+      .map(item => [item.name.toLowerCase(), item.founder_note])
+  );
+
+  const merged = new Map<string, DetectedTechnology>();
+
+  const register = (nameRaw: string, evidenceRaw: string, founderNote?: string) => {
+    const name = normalizeExternalServiceName(nameRaw);
+    if (!name) return;
+    const key = name.toLowerCase();
+    const evidence = normalizeExternalServiceName(evidenceRaw) || 'inferred_external_signal';
+    const note = founderNote
+      || signatureNoteByName.get(key)
+      || 'Third-party integration used by this system.';
+
+    if (!merged.has(key)) {
+      merged.set(key, {
+        name,
+        category: 'service',
+        evidence: [evidence],
+        founder_note: note,
+      });
+      return;
+    }
+
+    const existing = merged.get(key) as DetectedTechnology;
+    if (!existing.evidence.includes(evidence)) {
+      existing.evidence = [...existing.evidence, evidence].slice(0, 5);
+    }
+  };
+
+  detected
+    .filter(item => item.category === 'service')
+    .forEach((item) => register(item.name, item.evidence[0] || 'tech_signature', item.founder_note));
+
+  (analysis.business_context?.external_deps || []).forEach((dep) => {
+    register(dep.name, 'business_context.external_deps', dep.why_needed || undefined);
+  });
+
+  (analysis.architecture?.nodes || [])
+    .filter(node => node.type === 'external' || node.id.startsWith('external:'))
+    .forEach((node) => {
+      const candidate = normalizeExternalServiceName(node.name || node.id);
+      register(candidate, `architecture.node:${node.id}`);
+    });
+
+  collectPass3ExternalServiceNames(raw).forEach((name) => {
+    register(name, 'pass3.external_deps');
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function matchTechnologies(signalText: string[]): DetectedTechnology[] {
@@ -743,7 +838,7 @@ export function buildTechStackSnapshot(analysis: AnalysisResult): TechStackSnaps
   const languages = deriveLanguageDistribution(analysis, rawSignals);
   const frameworks = detected.filter(item => ['framework', 'orm', 'testing'].includes(item.category));
   const infrastructure = detected.filter(item => ['infra', 'tooling'].includes(item.category));
-  const externalServices = detected.filter(item => item.category === 'service');
+  const externalServices = buildExternalServices(analysis, raw, detected);
 
   const architecturePattern = determineArchitecturePattern(analysis, detected, rawSignals);
   const complexity = buildComplexity(analysis, detected, languages, architecturePattern, rawSignals);
