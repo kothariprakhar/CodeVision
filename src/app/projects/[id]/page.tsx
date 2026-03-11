@@ -2,15 +2,19 @@
 // ABOUTME: Project detail page showing architecture diagram, issues, and analysis controls.
 // ABOUTME: Allows uploading requirement documents and running analysis on a GitHub repository.
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Tabs from '@/components/Tabs';
 import ArchitectureDiagram from '@/components/ArchitectureDiagram';
 import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
-import ChatBot from '@/components/ChatBot';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
+import TechStackDashboard from '@/components/TechStackDashboard';
+import QAChat from '@/components/QAChat';
+import RiskPanel from '@/components/RiskPanel';
+import VersionDiffView from '@/components/VersionDiffView';
+import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
 import { useAuth } from '@/lib/hooks/useAuth';
 import type { ArchitectureVisualization } from '@/lib/db';
 
@@ -43,6 +47,26 @@ interface Analysis {
   summary: string;
   findings: Finding[];
   architecture: ArchitectureVisualization;
+  founder_content?: {
+    node_descriptions?: Record<string, string>;
+    journey_rewrites?: Record<string, {
+      name: string;
+      goal: string;
+      step_descriptions: Record<string, string>;
+    }>;
+    risk_rewrites?: Array<{
+      original_title: string;
+      title: string;
+      impact: string;
+      why_it_matters: string;
+    }>;
+  } | null;
+  repo_metadata?: {
+    stars?: number;
+    primary_language?: string | null;
+    contributors_count?: number;
+  } | null;
+  business_context?: BusinessContext | null;
   analyzed_at: string;
 }
 
@@ -50,6 +74,10 @@ interface AnalysisVersion {
   id: string;
   analyzed_at: string;
   is_latest: boolean;
+  branch?: string | null;
+  commit_hash?: string | null;
+  commit_url?: string | null;
+  summary?: string | null;
 }
 
 export default function ProjectDetail() {
@@ -66,11 +94,19 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<{ stage: string; progress: number; message: string } | null>(null);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('architecture');
+  const [highlightedModuleId, setHighlightedModuleId] = useState<string | null>(null);
   const [isFeedbackPanelOpen, setIsFeedbackPanelOpen] = useState(false);
   const [showFeedbackPrompt, setShowFeedbackPrompt] = useState(false);
   const [hasShownPrompt, setHasShownPrompt] = useState(false);
+  const [exporting, setExporting] = useState<'pdf' | 'slides' | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [qaExpanded, setQaExpanded] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const founderMode = true;
 
   const fetchProject = useCallback(async () => {
     try {
@@ -78,7 +114,7 @@ export default function ProjectDetail() {
       if (!response.ok) throw new Error('Project not found');
       const data = await response.json();
       setProject(data);
-    } catch (err) {
+    } catch {
       setError('Failed to load project');
     }
   }, [projectId]);
@@ -99,14 +135,14 @@ export default function ProjectDetail() {
       if (response.ok) {
         const data = await response.json();
         setVersions(data.versions || []);
-        if (data.versions?.length > 0 && !selectedVersion) {
+        if (data.versions?.length > 0) {
           setSelectedVersion(data.versions[0].id);
         }
       }
     } catch (err) {
       console.error('Failed to fetch versions:', err);
     }
-  }, [projectId, selectedVersion]);
+  }, [projectId]);
 
   const fetchAnalysis = useCallback(async (versionId?: string) => {
     try {
@@ -143,6 +179,9 @@ export default function ProjectDetail() {
 
   // Poll for analysis completion when project is analyzing
   useEffect(() => {
+    if (activeJobId) {
+      return;
+    }
     if (!project || project.status !== 'analyzing') {
       setAnalyzing(false);
       return;
@@ -158,7 +197,7 @@ export default function ProjectDetail() {
     }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [project, fetchProject, fetchVersions]);
+  }, [project, fetchProject, fetchVersions, activeJobId]);
 
   // Show feedback prompt 12 seconds after first analysis completes
   useEffect(() => {
@@ -171,6 +210,17 @@ export default function ProjectDetail() {
 
     return () => clearTimeout(timer);
   }, [analysis, hasShownPrompt]);
+
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    setExportMenuOpen(false);
+  }, [activeTab, selectedVersion]);
 
   const handleVersionChange = (versionId: string) => {
     setSelectedVersion(versionId);
@@ -235,9 +285,10 @@ export default function ProjectDetail() {
   const runAnalysis = async () => {
     setAnalyzing(true);
     setError('');
+    setAnalysisProgress(null);
 
     try {
-      const response = await fetch('/api/analyze', {
+      const response = await fetch('/api/repo/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: projectId }),
@@ -249,19 +300,126 @@ export default function ProjectDetail() {
         throw new Error(data.error || 'Analysis failed');
       }
 
-      await fetchProject();
-      await fetchVersions();
-      // Select the new version
-      if (data.id) {
-        setSelectedVersion(data.id);
-      }
+      const jobId = data.job_id as string;
+      setActiveJobId(jobId);
+      setAnalysisProgress({
+        stage: data.stage || 'queued',
+        progress: typeof data.progress === 'number' ? data.progress : 0,
+        message: data.message || 'Queued for analysis',
+      });
+
+      eventSourceRef.current?.close();
+      const eventSource = new EventSource(`/api/repo/${jobId}/events`);
+      eventSourceRef.current = eventSource;
+      eventSource.onmessage = async (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          setAnalysisProgress({
+            stage: payload.stage || 'queued',
+            progress: typeof payload.progress === 'number' ? payload.progress : 0,
+            message: payload.message || 'Analyzing...',
+          });
+
+          if (payload.status === 'completed') {
+            eventSource.close();
+            eventSourceRef.current = null;
+            setAnalyzing(false);
+            setActiveJobId(null);
+            if (payload.analysis_id) {
+              setSelectedVersion(payload.analysis_id);
+            }
+            await fetchProject();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await fetchVersions();
+          }
+
+          if (payload.status === 'failed' || payload.stage === 'failed') {
+            eventSource.close();
+            eventSourceRef.current = null;
+            setAnalyzing(false);
+            setActiveJobId(null);
+            setError(payload.error || payload.message || 'Analysis failed');
+            await fetchProject();
+          }
+        } catch {
+          // Ignore malformed events.
+        }
+      };
+      eventSource.onerror = async () => {
+        eventSource.close();
+        eventSourceRef.current = null;
+        try {
+          const statusRes = await fetch(`/api/repo/${jobId}/status`);
+          const statusData = await statusRes.json();
+          setAnalysisProgress({
+            stage: statusData.stage || 'queued',
+            progress: typeof statusData.progress === 'number' ? statusData.progress : 0,
+            message: statusData.message || 'Analyzing...',
+          });
+          if (statusData.status === 'completed') {
+            setAnalyzing(false);
+            setActiveJobId(null);
+            await fetchProject();
+            await fetchVersions();
+            if (statusData.analysis_id) setSelectedVersion(statusData.analysis_id);
+            return;
+          }
+          if (statusData.status === 'failed') {
+            setAnalyzing(false);
+            setActiveJobId(null);
+            setError(statusData.error || statusData.message || 'Analysis failed');
+            await fetchProject();
+          }
+        } catch {
+          setAnalyzing(false);
+          setActiveJobId(null);
+        }
+      };
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
       await fetchProject();
-    } finally {
+      setActiveJobId(null);
+      setAnalysisProgress(null);
       setAnalyzing(false);
     }
   };
+
+  const exportAnalysis = async (format: 'pdf' | 'slides') => {
+    if (!selectedVersion || exporting) return;
+    setExporting(format);
+    try {
+      const response = await fetch(`/api/export/${selectedVersion}/${format}`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error || `Failed to export ${format}`);
+      }
+
+      const blob = await response.blob();
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = format === 'pdf'
+        ? `${project?.name || 'analysis'}-report.pdf`
+        : `${project?.name || 'analysis'}-slides.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to export ${format}`);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const analysisButtonText = (() => {
+    if (!analyzing) return 'Run Analysis';
+    if (analysisProgress) return `${analysisProgress.progress}% · ${analysisProgress.message}`;
+    if (activeJobId) return 'Starting analysis...';
+    return 'Analyzing...';
+  })();
 
   const getFileIcon = (type: string) => {
     switch (type) {
@@ -270,16 +428,6 @@ export default function ProjectDetail() {
       case 'text': return '📃';
       case 'image': return '🖼️';
       default: return '📁';
-    }
-  };
-
-  const getSeverityClass = (severity: string) => {
-    switch (severity) {
-      case 'critical': return 'bg-red-500/10 border-red-500/30 text-red-400';
-      case 'high': return 'bg-orange-500/10 border-orange-500/30 text-orange-400';
-      case 'medium': return 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400';
-      case 'low': return 'bg-blue-500/10 border-blue-500/30 text-blue-400';
-      default: return '';
     }
   };
 
@@ -296,6 +444,15 @@ export default function ProjectDetail() {
     return `Last analysed ${diffDays} days ago`;
   };
 
+  const analysisDateText = analysis?.analyzed_at
+    ? new Date(analysis.analyzed_at).toLocaleString()
+    : 'No analysis yet';
+  const repoStars = analysis?.repo_metadata?.stars;
+  const repoContributors = analysis?.repo_metadata?.contributors_count;
+  const activeNarrative = founderMode
+    ? analysis?.business_context?.founder_narrative
+    : analysis?.business_context?.technical_narrative;
+
   if (loading) {
     return <div className="text-center py-12 text-gray-400">Loading project...</div>;
   }
@@ -306,7 +463,9 @@ export default function ProjectDetail() {
 
   const tabs = [
     { id: 'architecture', label: 'Architecture' },
-    { id: 'issues', label: `Issues${analysis ? ` (${analysis.findings.length})` : ''}` },
+    { id: 'version-diff', label: 'Version Diff' },
+    { id: 'techstack', label: 'Tech Stack' },
+    { id: 'risks', label: 'Risks' },
   ];
 
   return (
@@ -331,11 +490,26 @@ export default function ProjectDetail() {
               </svg>
               <span className="truncate max-w-md">{project.github_url}</span>
             </div>
+            {(activeNarrative?.executive_summary || analysis?.summary) && (
+              <p className="mt-3 max-w-3xl text-sm leading-relaxed text-gray-300">
+                {activeNarrative?.executive_summary || analysis?.summary}
+              </p>
+            )}
+            {activeNarrative?.how_it_works && (
+              <details className="mt-3 max-w-3xl rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+                <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  How It Works
+                </summary>
+                <p className="mt-2 leading-relaxed">{activeNarrative.how_it_works}</p>
+              </details>
+            )}
           </div>
           {getLastAnalyzedText() && (
-            <span className="text-xs text-gray-500 bg-white/5 px-3 py-1.5 rounded-full whitespace-nowrap">
-              {getLastAnalyzedText()}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500 bg-white/5 px-3 py-1.5 rounded-full whitespace-nowrap">
+                {getLastAnalyzedText()}
+              </span>
+            </div>
           )}
         </div>
       </div>
@@ -346,123 +520,137 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* Documents Section - Moved Above Tabs */}
-      <div className="glass-refined rounded-2xl p-6 mb-6 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/5">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-indigo-500/20 flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        <aside className="h-fit lg:sticky lg:top-24">
+          <div className="glass-refined rounded-2xl p-5 space-y-4 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-500/10">
             <div>
-              <h2 className="text-lg font-semibold text-white">
-                Requirements Documents
-              </h2>
-              <p className="text-xs text-gray-500">
-                {documents.length} {documents.length === 1 ? 'file' : 'files'} uploaded
-              </p>
+              <div className="text-xs uppercase tracking-wide text-gray-500">Repository</div>
+              <div className="mt-1 text-sm font-semibold text-white">{project.name}</div>
+              <div className="mt-1 text-xs text-gray-400 truncate">{project.github_url}</div>
             </div>
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <label className="block">
-            <div className="relative group">
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.md,.markdown,.txt,.png,.jpg,.jpeg,.gif,.webp"
-                onChange={handleFileUpload}
-                disabled={uploading}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
-              />
-              <div className="border-2 border-dashed border-white/10 rounded-xl p-6 text-center transition-all duration-300 group-hover:border-purple-500/40 group-hover:bg-purple-500/5">
-                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-purple-500/10 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                <p className="text-sm text-gray-300 font-medium">
-                  {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  PRD, BRD, wireframes, or other requirements (PDF, MD, TXT, images)
-                </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2">
+                <div className="text-gray-500">Stars</div>
+                <div className="mt-1 text-white font-semibold">{typeof repoStars === 'number' ? repoStars.toLocaleString() : 'N/A'}</div>
               </div>
-            </div>
-          </label>
-        </div>
-
-        {documents.length === 0 ? (
-          <div className="text-center py-4">
-            <p className="text-gray-500 text-sm">No documents uploaded yet</p>
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {documents.map(doc => (
-              <li key={doc.id} className="group flex justify-between items-center p-3 rounded-lg bg-white/[0.02] hover:bg-white/[0.05] transition-all duration-200">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/10 to-indigo-500/10 flex items-center justify-center text-sm">
-                    {getFileIcon(doc.file_type)}
-                  </div>
-                  <span className="text-sm text-gray-300">{doc.filename}</span>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-2 col-span-2">
+                <div className="text-gray-500">Analysis Date</div>
+                <div className="mt-1 text-white font-semibold">{analysisDateText}</div>
+              </div>
+              {typeof repoContributors === 'number' && (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2 col-span-2">
+                  <div className="text-gray-500">Contributors</div>
+                  <div className="mt-1 text-white font-semibold">{repoContributors}</div>
                 </div>
-                <button
-                  onClick={() => deleteDocument(doc.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 text-xs font-medium px-2 py-1 rounded transition-all duration-200"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              )}
+            </div>
 
-      {/* Tabs - Now Below Documents */}
+            <div className="border-t border-white/10 pt-4">
+              <div className="mb-3 text-sm font-semibold text-white">
+                📎 Documents ({documents.length})
+              </div>
+              <div className="mb-3">
+                <label className="block">
+                  <div className="relative group">
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.md,.markdown,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed z-10"
+                    />
+                    <div className="rounded-xl border border-dashed border-white/10 p-3 text-center transition-all duration-300 group-hover:border-purple-500/40 group-hover:bg-purple-500/5">
+                      <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-purple-500/10">
+                        <svg className="h-4 w-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                      </div>
+                      <p className="text-xs font-medium text-gray-300">
+                        {uploading ? 'Uploading...' : 'Upload docs'}
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {documents.length === 0 ? (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-gray-500">
+                  No documents uploaded yet.
+                </div>
+              ) : (
+                <ul className="mb-3 space-y-2">
+                  {documents.map(doc => (
+                    <li key={doc.id} className="group flex items-center justify-between rounded-lg bg-white/[0.02] p-2 transition-all duration-200 hover:bg-white/[0.05]">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-purple-500/10 to-indigo-500/10 text-xs">
+                          {getFileIcon(doc.file_type)}
+                        </div>
+                        <span className="max-w-[150px] truncate text-xs text-gray-300">{doc.filename}</span>
+                      </div>
+                      <button
+                        onClick={() => deleteDocument(doc.id)}
+                        className="rounded px-1.5 py-0.5 text-[10px] text-red-400 opacity-0 transition-all duration-200 hover:text-red-300 group-hover:opacity-100"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                onClick={runAnalysis}
+                disabled={analyzing || documents.length === 0}
+                className="btn-primary-refined flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium text-white"
+              >
+                {analyzing ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {analysisButtonText}
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    {analysisButtonText}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <div className="min-w-0">
       <div className="glass-refined rounded-2xl mb-6 overflow-hidden">
         <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
 
-        <div className="p-6">
+	        <div key={activeTab} className="p-6 tab-fade-stage">
           {activeTab === 'architecture' && (
             <>
-              {/* Version selector and Run Analysis */}
-              <div className="flex items-center justify-between mb-6">
-                {versions.length > 0 && (
-                  <AnalysisVersionSelector
-                    versions={versions}
-                    selectedVersion={selectedVersion}
-                    onChange={handleVersionChange}
-                  />
-                )}
-                <button
-                  onClick={runAnalysis}
-                  disabled={analyzing || documents.length === 0}
-                  className="btn-primary-refined px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2"
-                >
-                  {analyzing ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Analyzing...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Run Analysis
-                    </>
-                  )}
-                </button>
-              </div>
+	              {versions.length > 0 && (
+                  <div className="mb-6">
+	                  <AnalysisVersionSelector
+	                    versions={versions}
+	                    selectedVersion={selectedVersion}
+	                    onChange={handleVersionChange}
+	                  />
+                  </div>
+	                )}
 
               {/* Architecture Diagram */}
-              {analysis?.architecture ? (
-                <ArchitectureDiagram architecture={analysis.architecture} />
+	              {analysis?.architecture ? (
+	                <ArchitectureDiagram
+	                  architecture={analysis.architecture}
+	                  highlightedNodeId={highlightedModuleId}
+                    founderMode={founderMode}
+                    founderDescriptions={analysis.founder_content?.node_descriptions}
+                    architectureDomains={analysis.business_context?.architecture_domains}
+	                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
@@ -480,73 +668,119 @@ export default function ProjectDetail() {
                   </p>
                 </div>
               )}
+            </>
+          )}
 
-              {/* Chatbot */}
-              {analysis && selectedVersion && (
-                <div className="mt-6">
-                  <ChatBot projectId={projectId} analysisId={selectedVersion} />
+          {activeTab === 'version-diff' && (
+            <VersionDiffView
+              projectId={projectId}
+              versions={versions}
+              founderMode={founderMode}
+            />
+          )}
+
+          {activeTab === 'techstack' && (
+            <>
+              {analysis && selectedVersion ? (
+                <TechStackDashboard
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  dataUsage={analysis.business_context?.data_usage}
+                  externalDeps={analysis.business_context?.external_deps}
+                  scaleAssessment={activeNarrative?.scale_assessment}
+                  technologyChoices={activeNarrative?.technology_choices}
+                />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No tech stack analysis yet</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Run analysis to detect frameworks, infra, services, and complexity.
+                  </p>
                 </div>
               )}
             </>
           )}
 
-          {activeTab === 'issues' && (
+          {activeTab === 'risks' && (
             <>
-              {analysis?.findings && analysis.findings.length > 0 ? (
-                <div className="space-y-3">
-                  {analysis.findings.map((finding, index) => (
-                    <div
-                      key={index}
-                      className={`rounded-xl p-4 border transition-all duration-200 hover:scale-[1.01] ${getSeverityClass(finding.severity)}`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-semibold text-white text-sm">{finding.title}</h3>
-                        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-white/10">
-                          {finding.severity.toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-300 leading-relaxed">{finding.description}</p>
-                    </div>
-                  ))}
-                  <Link
-                    href={`/projects/${projectId}/report`}
-                    className="group flex items-center justify-center gap-2 text-purple-400 hover:text-purple-300 text-sm font-medium mt-6 py-3 rounded-xl bg-purple-500/5 hover:bg-purple-500/10 transition-all duration-200"
-                  >
-                    View full report
-                    <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                    </svg>
-                  </Link>
-                </div>
-              ) : !analysis ? (
-                <div className="text-center text-gray-500 py-12">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-500/10 flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </div>
-                  <p className="font-medium text-gray-400">
-                    {project.status === 'analyzing' ? 'Analysis in progress...' : 'No analysis yet'}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {project.status !== 'analyzing' && 'Upload documents and run analysis to see issues'}
-                  </p>
-                </div>
+              {analysis && selectedVersion ? (
+                <RiskPanel
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  founderRiskRewrites={analysis.founder_content?.risk_rewrites}
+                />
               ) : (
                 <div className="text-center text-gray-500 py-12">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
-                    <svg className="w-8 h-8 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <p className="font-medium text-gray-400">No issues found</p>
-                  <p className="text-sm text-gray-600 mt-1">Everything looks good!</p>
+                  <p className="font-medium text-gray-400">No risk assessment yet</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Run analysis to generate risk and technical debt insights.
+                  </p>
                 </div>
               )}
             </>
           )}
         </div>
+
+        {analysis && selectedVersion && (
+          <div className="border-t border-white/10">
+            <button
+              onClick={() => setQaExpanded(value => !value)}
+              className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
+            >
+              <span className="flex items-center gap-2">💬 Ask about this repository</span>
+              <svg
+                className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {qaExpanded && (
+              <div className="px-6 pb-6">
+                <QAChat
+                  analysisId={selectedVersion}
+                  founderMode={founderMode}
+                  onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
+                  onOpenArchitecture={() => setActiveTab('architecture')}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
+      </div>
+      </div>
+
+      {selectedVersion && (
+        <div className="fixed bottom-6 right-6 z-40">
+          {exportMenuOpen && (
+            <div className="mb-2 w-44 rounded-xl border border-white/15 bg-[#0d1324]/95 p-2 shadow-2xl shadow-indigo-500/20">
+              <button
+                onClick={() => exportAnalysis('pdf')}
+                disabled={exporting !== null}
+                className="w-full rounded-lg px-3 py-2 text-left text-xs text-gray-200 hover:bg-white/[0.08] disabled:opacity-40"
+              >
+                {exporting === 'pdf' ? 'Exporting PDF...' : 'Export PDF Report'}
+              </button>
+              <button
+                onClick={() => exportAnalysis('slides')}
+                disabled={exporting !== null}
+                className="w-full rounded-lg px-3 py-2 text-left text-xs text-gray-200 hover:bg-white/[0.08] disabled:opacity-40"
+              >
+                {exporting === 'slides' ? 'Exporting Slides...' : 'Export Slide Deck'}
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setExportMenuOpen(value => !value)}
+            className="rounded-full border border-indigo-400/45 bg-indigo-500/25 px-4 py-3 text-xs font-semibold text-indigo-100 shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-500/35"
+          >
+            Export
+          </button>
+        </div>
+      )}
 
       {/* Feedback Prompt */}
       {showFeedbackPrompt && (

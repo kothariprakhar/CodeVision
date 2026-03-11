@@ -28,28 +28,41 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+    let cancelled = false;
+
+    const initializeAuthState = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        const data = await response.json();
+        if (!cancelled) {
+          setState({ user: data.user, loading: false });
+        }
+      } catch {
+        if (!cancelled) {
+          setState({ user: null, loading: false });
+        }
+      }
+    };
+
+    void initializeAuthState();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Refetch user data when window gains focus (handles login in same tab)
   useEffect(() => {
+    let lastFetch = 0;
     const handleFocus = () => {
-      fetchUser();
+      const now = Date.now();
+      if (now - lastFetch > 30000) {
+        lastFetch = now;
+        void fetchUser();
+      }
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [fetchUser]);
-
-  // Poll for auth changes every 2 seconds when document is visible
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchUser();
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
   }, [fetchUser]);
 
   const logout = useCallback(async () => {

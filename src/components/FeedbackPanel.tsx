@@ -4,7 +4,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/hooks/useAuth';
 import { getRecentConsoleLogs } from '@/lib/utils/console-logger';
 
 interface FeedbackPanelProps {
@@ -13,9 +12,10 @@ interface FeedbackPanelProps {
   projectId?: string;
 }
 
+type FeedbackCategory = 'bug_report' | 'feature_request' | 'general_feedback';
+
 export default function FeedbackPanel({ isOpen, onClose, projectId }: FeedbackPanelProps) {
-  const { user } = useAuth();
-  const [category, setCategory] = useState<'bug_report' | 'feature_request' | 'general_feedback'>('general_feedback');
+  const [category, setCategory] = useState<FeedbackCategory>('general_feedback');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -128,7 +128,7 @@ export default function FeedbackPanel({ isOpen, onClose, projectId }: FeedbackPa
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as any)}
+              onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
               className="input-dark w-full px-4 py-3 rounded-lg"
               disabled={submitting}
             >
@@ -146,7 +146,7 @@ export default function FeedbackPanel({ isOpen, onClose, projectId }: FeedbackPa
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Tell us what's on your mind..."
+              placeholder="Tell us what&apos;s on your mind..."
               className="input-dark w-full px-4 py-3 rounded-lg resize-none flex-1"
               maxLength={1000}
               required
@@ -160,7 +160,7 @@ export default function FeedbackPanel({ isOpen, onClose, projectId }: FeedbackPa
           {/* Footer */}
           <div className="border-t border-white/10 pt-4">
             <p className="text-xs text-gray-500 mb-4">
-              We'll receive your email and page context to help us respond
+              We&apos;ll receive your email and page context to help us respond
             </p>
             <button
               type="submit"

@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import * as tar from 'tar';
 import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import type { ReadableStream as NodeWebReadableStream } from 'node:stream/web';
 
 const REPOS_DIR = '/tmp/repos';
 
@@ -125,8 +127,9 @@ export async function downloadRepository(
 
     // Extract tarball directly from stream
     // GitHub tarballs have a top-level directory, we need to strip it
+    const bodyStream = response.body as unknown as NodeWebReadableStream;
     await pipeline(
-      response.body as any,
+      Readable.fromWeb(bodyStream),
       tar.extract({
         cwd: downloadPath,
         strip: 1, // Remove the top-level directory from the tarball

@@ -87,7 +87,7 @@ function VerifyEmailContent() {
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Verify Your Email</h1>
           <p className="text-gray-400">
-            We've sent a 6-digit code to <span className="text-purple-400">{email}</span>
+            We&apos;ve sent a 6-digit code to <span className="text-purple-400">{email}</span>
           </p>
         </div>
 
@@ -132,7 +132,7 @@ function VerifyEmailContent() {
           </button>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-400 mb-2">Didn't receive the code?</p>
+            <p className="text-sm text-gray-400 mb-2">Didn&apos;t receive the code?</p>
             <button
               type="button"
               onClick={handleResend}

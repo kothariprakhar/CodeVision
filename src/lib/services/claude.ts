@@ -11,6 +11,7 @@ const client = new Anthropic();
 export interface AnalysisInput {
   documents: ParsedDocument[];
   codeFiles: { path: string; content: string }[];
+  structuralContext?: string;
 }
 
 export interface AnalysisOutput {
@@ -123,6 +124,10 @@ Severity guide for findings:
 - medium: Feature partially implemented or minor spec deviation
 - low: Nice-to-have missing or cosmetic mismatch`;
 
+  const structuralSection = input.structuralContext
+    ? `\n## STRUCTURAL CODE ANALYSIS (AST + DEPENDENCY GRAPH)\n\n${input.structuralContext}\n`
+    : '';
+
   const userMessage = `## REQUIREMENTS DOCUMENTS
 
 ${requirementsContext}
@@ -130,6 +135,8 @@ ${requirementsContext}
 ## CODE FILES
 
 ${codeContext}
+
+${structuralSection}
 
 Please analyze how well this codebase implements the requirements specified in the documents above. Identify gaps and fidelity issues, prioritized by business impact.`;
 

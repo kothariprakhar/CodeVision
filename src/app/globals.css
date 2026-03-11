@@ -17,11 +17,43 @@
   --color-surface-lighter: #252550;
 }
 
+:root {
+  --bg-primary: hsl(220, 25%, 8%);
+  --bg-secondary: hsl(220, 20%, 12%);
+  --bg-elevated: hsl(220, 20%, 16%);
+  --accent-primary: hsl(250, 85%, 65%);
+  --accent-glow: hsl(250, 85%, 65%, 0.2);
+  --text-primary: hsl(220, 15%, 90%);
+  --text-secondary: hsl(220, 10%, 60%);
+  --success: hsl(145, 65%, 50%);
+  --warning: hsl(40, 90%, 55%);
+  --danger: hsl(0, 75%, 55%);
+
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background:
+    radial-gradient(1200px 700px at 20% -10%, rgba(99, 102, 241, 0.18), transparent 55%),
+    radial-gradient(1000px 600px at 90% -20%, rgba(79, 70, 229, 0.14), transparent 50%),
+    linear-gradient(165deg, hsl(220, 28%, 9%) 0%, hsl(220, 22%, 8%) 55%, hsl(220, 14%, 12%) 100%);
   min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
 }
 
 .glass {
@@ -251,6 +283,93 @@ body {
   animation: fade-in 0.3s ease-out forwards;
 }
 
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.2s ease-out;
+}
+
+@keyframes node-pulse-active {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--pulse-color, rgba(129, 140, 248, 0.45));
+  }
+  50% {
+    box-shadow: 0 0 20px 6px var(--pulse-color, rgba(129, 140, 248, 0.45));
+  }
+}
+
+.animate-node-pulse {
+  animation: node-pulse-active 1.25s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+.node-selected {
+  border-color: var(--domain-color) !important;
+  box-shadow: 0 0 0 2px var(--domain-color), 0 0 18px rgba(148, 163, 184, 0.35) !important;
+}
+
+.node-selected,
+.node-box,
+rect {
+  transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.3s ease, box-shadow 0.25s ease;
+}
+
+@keyframes live-heartbeat {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 var(--domain-color, rgba(129, 140, 248, 0.35)));
+  }
+  50% {
+    transform: scale(1.015);
+    filter: drop-shadow(0 0 8px var(--domain-color, rgba(129, 140, 248, 0.35)));
+  }
+}
+
+.live-node-low {
+  animation: live-heartbeat 4s ease-in-out infinite;
+}
+
+.live-node-medium {
+  animation: live-heartbeat 2.5s ease-in-out infinite;
+}
+
+.live-node-high {
+  animation: live-heartbeat 1.8s ease-in-out infinite;
+}
+
+@keyframes node-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.animate-node-ripple {
+  animation: node-ripple 0.6s ease-out;
+}
+
+@keyframes step-progress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
 /* Subtle pulse animation */
 @keyframes pulse-subtle {
   0%, 100% {
@@ -366,4 +485,140 @@ body {
 
 .animate-slide-out-top-right {
   animation: slide-out-top-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.repo-url-glow {
+  background: linear-gradient(
+    120deg,
+    rgba(129, 140, 248, 0.5) 0%,
+    rgba(99, 102, 241, 0.18) 35%,
+    rgba(139, 92, 246, 0.45) 68%,
+    rgba(129, 140, 248, 0.5) 100%
+  );
+  background-size: 200% 200%;
+  animation: repo-glow-shift 7s ease infinite;
+  box-shadow: var(--shadow-glow);
+}
+
+.repo-url-shell {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.demo-surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0.015) 100%);
+}
+
+.demo-card {
+  animation: demo-float 4.8s ease-in-out infinite;
+}
+
+.demo-card:nth-child(2) {
+  animation-delay: 0.4s;
+}
+
+.demo-card:nth-child(3) {
+  animation-delay: 0.8s;
+}
+
+.demo-progress {
+  animation: demo-progress-pulse 2.8s ease-in-out infinite;
+}
+
+.tab-fade-stage > * {
+  animation: tab-item-in 0.36s ease both;
+}
+
+.tab-fade-stage > *:nth-child(1) { animation-delay: 0.04s; }
+.tab-fade-stage > *:nth-child(2) { animation-delay: 0.08s; }
+.tab-fade-stage > *:nth-child(3) { animation-delay: 0.12s; }
+.tab-fade-stage > *:nth-child(4) { animation-delay: 0.16s; }
+
+@keyframes repo-glow-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes demo-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes demo-progress-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+
+@keyframes tab-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-stage {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.012) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.hero-orb {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border-radius: 9999px;
+  filter: blur(55px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.hero-orb-left {
+  top: -120px;
+  left: -80px;
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.75) 0%, rgba(129, 140, 248, 0) 70%);
+}
+
+.hero-orb-right {
+  top: -140px;
+  right: -90px;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.65) 0%, rgba(45, 212, 191, 0) 70%);
+}
+
+.hero-title {
+  animation: hero-title-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.hero-subtitle {
+  animation: hero-subtitle-in 0.52s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.07s;
+}
+
+.hero-demo-entry {
+  animation: hero-subtitle-in 0.56s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.12s;
+}
+
+@keyframes hero-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-subtitle-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

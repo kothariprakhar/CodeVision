@@ -1,11 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 import { getAnalysisById, getChatHistory, updateChatHistory } from '../repositories/analysis';
 import { getProject } from '../repositories/projects';
 import { ChatMessage, ArchitectureVisualization, Finding } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { getProjectRepoPath, downloadRepository, cloneRepository } from './github';
+import { buildStarterQuestions } from './tech-risk-engine';
 
 const anthropic = new Anthropic();
 
@@ -28,11 +30,66 @@ export interface ChatResponse {
   content: string;
   responseType: 'quick' | 'detailed';
   timestamp: string;
+  followUps: string[];
+  referencedModules: string[];
+  starterQuestions?: string[];
+}
+
+const AssistantPayloadSchema = z.object({
+  answer: z.string().min(1),
+  follow_up_questions: z.array(z.string()).default([]),
+  referenced_modules: z.array(z.string()).default([]),
+  certainty: z.enum(['high', 'medium', 'low']).optional(),
+});
+
+const DEFAULT_STARTER_QUESTIONS = [
+  'How does authentication work in this product?',
+  'What are the most business-critical modules?',
+  'Where are the biggest reliability risks today?',
+  'How would this system handle 10x user growth?',
+];
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function sanitizeModuleName(name: string): string {
+  return name.trim();
+}
+
+function normalize(value: string): string {
+  return value.toLowerCase();
+}
+
+function extractKeywords(text: string): string[] {
+  return unique(
+    normalize(text)
+      .split(/[^a-z0-9_./-]+/)
+      .filter(token => token.length >= 3)
+  );
+}
+
+function selectRelevantModules(question: string, architecture: ArchitectureVisualization): string[] {
+  const keywords = extractKeywords(question);
+  if (keywords.length === 0) return [];
+
+  const scored = (architecture.nodes || [])
+    .map(node => {
+      const searchable = normalize(`${node.name} ${node.description} ${(node.files || []).join(' ')}`);
+      const score = keywords.reduce((sum, keyword) => sum + (searchable.includes(keyword) ? 1 : 0), 0);
+      return { id: node.id, score };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map(item => item.id);
+
+  return scored;
 }
 
 async function searchCodeFiles(repoPath: string, query: string): Promise<string[]> {
   const results: string[] = [];
-  const searchTerms = query.toLowerCase().split(' ').filter(t => t.length > 2);
+  const searchTerms = extractKeywords(query);
 
   function walkDir(dir: string): void {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -47,21 +104,19 @@ async function searchCodeFiles(repoPath: string, query: string): Promise<string[
         }
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.java'];
+        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.java', '.rb', '.rs'];
 
         if (codeExtensions.includes(ext)) {
           try {
             const content = fs.readFileSync(fullPath, 'utf-8');
             const lowerContent = content.toLowerCase();
-
             if (searchTerms.some(term => lowerContent.includes(term))) {
               const relativePath = path.relative(repoPath, fullPath);
-              // Limit content to first 500 lines
-              const lines = content.split('\n').slice(0, 500).join('\n');
+              const lines = content.split('\n').slice(0, 220).join('\n');
               results.push(`File: ${relativePath}\n\`\`\`\n${lines}\n\`\`\``);
             }
-          } catch (e) {
-            // Skip unreadable files
+          } catch {
+            // skip unreadable files
           }
         }
       }
@@ -69,45 +124,62 @@ async function searchCodeFiles(repoPath: string, query: string): Promise<string[
   }
 
   walkDir(repoPath);
-  return results.slice(0, 5); // Limit to 5 most relevant files
+  return results.slice(0, 4);
 }
 
 function determineResponseType(question: string): 'quick' | 'detailed' {
-  const quickPatterns = [
-    /where is/i,
-    /which file/i,
-    /what does .* do/i,
-    /how many/i,
-    /list the/i,
-    /show me/i,
-  ];
-
-  const detailedPatterns = [
-    /how should i/i,
-    /how would i/i,
-    /how can i/i,
-    /implement/i,
-    /best practice/i,
-    /architecture/i,
-    /design/i,
-  ];
-
-  if (detailedPatterns.some(p => p.test(question))) {
-    return 'detailed';
-  }
-  if (quickPatterns.some(p => p.test(question))) {
-    return 'quick';
-  }
+  const quickPatterns = [/where is/i, /which file/i, /what does .* do/i, /how many/i, /list/i];
+  const detailedPatterns = [/how should/i, /how can/i, /implement/i, /best practice/i, /architecture/i, /scale/i];
+  if (detailedPatterns.some(pattern => pattern.test(question))) return 'detailed';
+  if (quickPatterns.some(pattern => pattern.test(question))) return 'quick';
   return 'quick';
+}
+
+function parseAssistantPayload(text: string, fallbackModules: string[]): z.infer<typeof AssistantPayloadSchema> {
+  const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const match = cleaned.match(/\{[\s\S]*\}$/);
+  const candidate = match ? match[0] : cleaned;
+
+  try {
+    const parsed = JSON.parse(candidate) as unknown;
+    const result = AssistantPayloadSchema.safeParse(parsed);
+    if (result.success) {
+      return {
+        ...result.data,
+        follow_up_questions: result.data.follow_up_questions.slice(0, 3),
+        referenced_modules: unique(result.data.referenced_modules.map(sanitizeModuleName)).slice(0, 4),
+      };
+    }
+  } catch {
+    // fallback below
+  }
+
+  const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+  const followUps = lines
+    .filter(line => /^[-*]/.test(line) && /\?$/.test(line))
+    .map(line => line.replace(/^[-*]\s*/, ''))
+    .slice(0, 2);
+
+  return {
+    answer: cleaned || 'I could not generate a reliable answer for that question.',
+    follow_up_questions: followUps.length > 0
+      ? followUps
+      : [
+        'Which module should we inspect first for this?',
+        'What is the biggest business risk in this area?',
+      ],
+    referenced_modules: fallbackModules,
+    certainty: 'medium',
+  };
 }
 
 export async function chat(
   projectId: string,
   analysisId: string,
   message: string,
-  elementContext?: ElementContext
+  elementContext?: ElementContext,
+  founderMode: boolean = false
 ): Promise<ChatResponse> {
-  // Get analysis context
   const analysis = await getAnalysisById(analysisId);
   if (!analysis) {
     throw new Error('Analysis not found');
@@ -118,38 +190,14 @@ export async function chat(
     throw new Error('Project not found');
   }
 
-  // Get repo path and ensure it exists (on-demand cloning)
   const repoPath = getProjectRepoPath(projectId);
-
   if (!fs.existsSync(repoPath)) {
-    // Download repository if not present (try GitHub API first, then git clone)
-    let downloadResult = await downloadRepository(
-      project.github_url,
-      project.github_token,
-      projectId
-    );
-
-    // Fallback to git clone if download fails (may fail on serverless)
+    let downloadResult = await downloadRepository(project.github_url, project.github_token, projectId);
     if (!downloadResult.success) {
-      console.log('GitHub API download failed:', downloadResult.error);
-      console.log('Attempting git clone fallback for chat...');
-
-      try {
-        downloadResult = await cloneRepository(
-          project.github_url,
-          project.github_token,
-          projectId
-        );
-        console.log('Git clone fallback successful');
-      } catch (gitError) {
-        console.warn('Git clone fallback failed (expected on serverless)');
-        console.warn('Proceeding without code context for chat');
-      }
+      downloadResult = await cloneRepository(project.github_url, project.github_token, projectId);
     }
-
     if (!downloadResult.success) {
-      // Proceed without code context if download fails
-      console.warn('Failed to download repository for chat context:', downloadResult.error);
+      console.warn('Repository unavailable for Q&A code search:', downloadResult.error);
     }
   }
 
@@ -160,70 +208,76 @@ export async function chat(
     repoPath: fs.existsSync(repoPath) ? repoPath : null,
   };
 
-  // Get chat history
-  const history = await getChatHistory(analysisId);
-
-  // Determine response type
   const responseType = determineResponseType(message);
+  const history = await getChatHistory(analysisId);
+  const starterQuestions = buildStarterQuestions(analysis);
+  const fallbackModules = selectRelevantModules(message, context.architecture);
 
-  // Search code if repo is available
   let codeContext = '';
-  if (context.repoPath && fs.existsSync(context.repoPath)) {
+  if (context.repoPath) {
     const codeResults = await searchCodeFiles(context.repoPath, message);
     if (codeResults.length > 0) {
-      codeContext = '\n\nRelevant code files:\n' + codeResults.join('\n\n');
+      codeContext = `\n\nRelevant code snippets:\n${codeResults.join('\n\n')}`;
     }
   }
 
-  // Build element context text
-  const elementContextText = elementContext
-    ? `\n\nCurrent Element Context:\nComponent: ${elementContext.component || 'unknown'}\nFile: ${elementContext.file || 'unknown'}\nLine: ${elementContext.line || 'unknown'}\nSelector: ${elementContext.selector || 'unknown'}\n\nThe user is inspecting this specific element. Prioritize information about this element in your response.`
+  const contextHint = elementContext
+    ? `\nCurrent focus element:\n- Component: ${elementContext.component || 'unknown'}\n- File: ${elementContext.file || 'unknown'}\n- Line: ${elementContext.line || 'unknown'}\n- Selector: ${elementContext.selector || 'unknown'}`
     : '';
 
-  // Build system prompt
-  const systemPrompt = `You are a helpful assistant for developers onboarding to a codebase.
+  const systemPrompt = `You are a senior engineer explaining a codebase to a non-technical founder.
 
-Analysis Summary:
-${context.summary}
+Rules:
+- Keep answer to 2-3 short paragraphs max.
+- Use business-friendly language and practical analogies.
+- Mention module names when relevant.
+- If uncertain, say so explicitly.
+- Suggest 2-3 follow-up questions.
+- ${founderMode ? 'Use zero jargon. Explain everything in plain business language.' : 'Use light technical language only when necessary.'}
+- Return JSON only in this format:
+{
+  "answer": "...",
+  "follow_up_questions": ["..."],
+  "referenced_modules": ["module-id"],
+  "certainty": "high|medium|low"
+}
 
-Architecture Components:
-${context.architecture.nodes.map(n => `- ${n.name} (${n.type}): ${n.description}`).join('\n')}
+Project summary:\n${context.summary}
 
-${elementContextText}
+Architecture modules:\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.id}: ${node.name} (${node.type})`).join('\n')}
 
-${responseType === 'quick'
-  ? 'Provide a concise, direct answer. Be specific about file names and locations.'
-  : 'Provide a thorough explanation. If the question involves implementation, suggest they explore specific areas but note this is for understanding, not direct coding assistance.'}
+Risk highlights:\n${(context.findings || []).slice(0, 8).map(finding => `- ${finding.severity.toUpperCase()}: ${finding.title}`).join('\n')}
 
-${codeContext}`;
+Starter questions:\n${starterQuestions.map(question => `- ${question}`).join('\n')}
+${contextHint}${codeContext}
+${responseType === 'quick' ? '\nPrioritize concise directness.' : '\nPrioritize strategic depth and trade-offs.'}`;
 
-  // Build messages
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-    ...history.map(m => ({ role: m.role, content: m.content })),
+    ...history.slice(-8).map(item => ({ role: item.role, content: item.content })),
     { role: 'user', content: message },
   ];
 
-  // Call Claude
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: responseType === 'quick' ? 500 : 1500,
+    max_tokens: responseType === 'quick' ? 700 : 1200,
     system: systemPrompt,
     messages,
   });
 
-  const assistantMessage = response.content[0].type === 'text'
-    ? response.content[0].text
-    : '';
+  const textBlocks = response.content.filter(block => block.type === 'text');
+  const joinedText = textBlocks.map(block => block.text).join('\n').trim();
+  const payload = parseAssistantPayload(joinedText, fallbackModules);
 
-  // Create response
   const chatResponse: ChatResponse = {
     id: uuidv4(),
-    content: assistantMessage,
+    content: payload.answer,
     responseType,
     timestamp: new Date().toISOString(),
+    followUps: payload.follow_up_questions.slice(0, 3),
+    referencedModules: unique(payload.referenced_modules).slice(0, 4),
+    starterQuestions,
   };
 
-  // Save to history
   const userMessage: ChatMessage = {
     id: uuidv4(),
     role: 'user',
@@ -235,16 +289,24 @@ ${codeContext}`;
   const assistantChatMessage: ChatMessage = {
     id: chatResponse.id,
     role: 'assistant',
-    content: assistantMessage,
+    content: chatResponse.content,
     timestamp: chatResponse.timestamp,
     responseType,
+    followUps: chatResponse.followUps,
+    referencedModules: chatResponse.referencedModules,
   };
 
   await updateChatHistory(analysisId, [...history, userMessage, assistantChatMessage]);
-
   return chatResponse;
 }
 
 export async function getAnalysisChatHistory(analysisId: string): Promise<ChatMessage[]> {
-  return await getChatHistory(analysisId);
+  return getChatHistory(analysisId);
+}
+
+export async function getStarterQuestionsForAnalysis(analysisId: string): Promise<string[]> {
+  const analysis = await getAnalysisById(analysisId);
+  if (!analysis) return DEFAULT_STARTER_QUESTIONS;
+  const generated = buildStarterQuestions(analysis);
+  return generated.length > 0 ? generated : DEFAULT_STARTER_QUESTIONS;
 }
