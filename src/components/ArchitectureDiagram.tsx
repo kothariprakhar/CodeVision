@@ -903,11 +903,11 @@ export default function ArchitectureDiagram({
                           x={(sx + tx) / 2}
                           y={midY - 8}
                           fill="rgba(230,236,250,0.9)"
-                          fontSize="20"
+                          fontSize="15"
                           textAnchor="middle"
                           opacity={0.85}
                         >
-                          {truncate(edge.label, 40)}
+                          {edge.label}
                         </text>
                       )}
                     </g>
