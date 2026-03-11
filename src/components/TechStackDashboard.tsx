@@ -75,20 +75,6 @@ function describeArc(cx: number, cy: number, radius: number, startAngle: number,
   return ['M', start.x, start.y, 'A', radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(' ');
 }
 
-type LayoutMode = 'sparse' | 'balanced' | 'imbalanced';
-
-function getLayoutMode(counts: number[]): LayoutMode {
-  const nonZero = counts.filter((count) => count > 0);
-  const total = counts.reduce((sum, count) => sum + count, 0);
-  if (total <= 6) return 'sparse';
-  if (nonZero.length <= 1) return 'imbalanced';
-
-  const max = Math.max(...nonZero);
-  const min = Math.min(...nonZero);
-  if (min === 0) return 'imbalanced';
-  return max / min <= 1.8 ? 'balanced' : 'imbalanced';
-}
-
 export default function TechStackDashboard({
   analysisId,
   founderMode = false,
@@ -100,7 +86,6 @@ export default function TechStackDashboard({
   const [data, setData] = useState<TechStackResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!analysisId) return;
@@ -121,10 +106,6 @@ export default function TechStackDashboard({
     }
 
     fetchTechStack();
-  }, [analysisId]);
-
-  useEffect(() => {
-    setExpandedSections({});
   }, [analysisId]);
 
   const donutStyle = useMemo(() => {
@@ -155,31 +136,6 @@ export default function TechStackDashboard({
 
   const complexityPercent = Math.max(0, Math.min(100, (data.complexity_score / 10) * 100));
   const gaugeAngle = (complexityPercent / 100) * 360;
-  const categories = [
-    {
-      key: 'frameworks',
-      title: 'Frameworks & Tooling',
-      items: data.frameworks,
-      emptyMessage: 'No major framework signals detected.',
-    },
-    {
-      key: 'infrastructure',
-      title: 'Infrastructure',
-      items: data.infrastructure,
-      emptyMessage: 'No infrastructure signals detected.',
-    },
-    {
-      key: 'external',
-      title: 'External Services',
-      items: data.external_services,
-      emptyMessage: 'No major external services detected.',
-    },
-  ] as const;
-  const layoutMode = getLayoutMode(categories.map(category => category.items.length));
-  const dominantCategoryKey = layoutMode === 'imbalanced'
-    ? [...categories].sort((a, b) => b.items.length - a.items.length)[0]?.key
-    : null;
-  const compactLanguagePanel = data.languages.length > 6 || data.languages.some(slice => slice.percentage < 4);
 
   return (
     <div className="space-y-4">
@@ -230,131 +186,69 @@ export default function TechStackDashboard({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(280px,340px)_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="text-xs uppercase tracking-wide text-gray-400">Languages</div>
-          {!compactLanguagePanel ? (
-            <div className="mt-4 flex items-center gap-4">
-              <div className="relative h-28 w-28 rounded-full" style={donutStyle}>
-                <div className="absolute inset-[18px] rounded-full bg-[#0b1020]" />
-              </div>
-              <div className="space-y-2 text-xs text-gray-300">
-                {data.languages.slice(0, 8).map((slice, index) => (
-                  <div key={slice.language} className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: LANGUAGE_COLORS[index % LANGUAGE_COLORS.length] }}
-                    />
-                    <span>{slice.language}</span>
-                    <span className="text-gray-500">{slice.percentage}%</span>
-                  </div>
-                ))}
-              </div>
+          <div className="mt-4 flex items-center gap-4">
+            <div className="relative h-28 w-28 rounded-full" style={donutStyle}>
+              <div className="absolute inset-[18px] rounded-full bg-[#0b1020]" />
             </div>
-          ) : (
-            <div className="mt-3 space-y-2 text-xs text-gray-300">
-              {data.languages.slice(0, 8).map((slice, index) => (
-                <div key={slice.language}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span>{slice.language}</span>
-                    <span className="text-gray-500">{slice.percentage}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.max(3, Math.min(100, slice.percentage))}%`,
-                        backgroundColor: LANGUAGE_COLORS[index % LANGUAGE_COLORS.length],
-                      }}
-                    />
-                  </div>
+            <div className="space-y-2 text-xs text-gray-300">
+              {data.languages.map((slice, index) => (
+                <div key={slice.language} className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: LANGUAGE_COLORS[index % LANGUAGE_COLORS.length] }}
+                  />
+                  <span>{slice.language}</span>
+                  <span className="text-gray-500">{slice.percentage}%</span>
                 </div>
               ))}
-              {data.languages.length > 8 && (
-                <div className="pt-1 text-[11px] text-gray-500">
-                  +{data.languages.length - 8} more languages
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <h3 className="text-sm font-semibold text-white">Frameworks & Tooling</h3>
+            <div className="mt-3 space-y-2">
+              {data.frameworks.slice(0, 8).map(item => (
+                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm text-white">{item.name}</div>
+                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <h3 className="text-sm font-semibold text-white">Infrastructure</h3>
+            <div className="mt-3 space-y-2">
+              {data.infrastructure.slice(0, 8).map(item => (
+                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm text-white">{item.name}</div>
+                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <h3 className="text-sm font-semibold text-white">External Services</h3>
+            <div className="mt-3 space-y-2">
+              {data.external_services.slice(0, 8).map(item => (
+                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm text-white">{item.name}</div>
+                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
+                </div>
+              ))}
+              {data.external_services.length === 0 && (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-gray-400">
+                  No major external services detected.
                 </div>
               )}
             </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-            <div className="text-[11px] uppercase tracking-wide text-gray-400">Stack at a glance</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <span
-                  key={`summary-${category.key}`}
-                  className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-gray-200"
-                >
-                  {category.title} ({category.items.length})
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div
-            data-testid="techstack-category-grid"
-            data-layout-mode={layoutMode}
-            className={`grid items-start gap-4 ${
-              layoutMode === 'sparse'
-                ? 'md:grid-cols-2'
-                : 'md:grid-cols-2 xl:grid-cols-3'
-            }`}
-          >
-            {categories.map((category) => {
-              const isDominant = layoutMode === 'imbalanced' && dominantCategoryKey === category.key;
-              const defaultLimit = category.key === 'infrastructure' ? 4 : 6;
-              const expanded = Boolean(expandedSections[category.key]);
-              const visibleItems = expanded ? category.items : category.items.slice(0, defaultLimit);
-
-              return (
-                <section
-                  key={category.key}
-                  className={`self-start rounded-2xl border border-white/10 bg-white/[0.02] p-4 ${
-                    isDominant ? 'xl:col-span-2' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-white">{category.title}</h3>
-                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[11px] text-gray-400">
-                      {category.items.length}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 space-y-2">
-                    {visibleItems.map(item => (
-                      <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                        <div className="text-sm text-white">{item.name}</div>
-                        <div className="mt-0.5 line-clamp-3 text-xs leading-relaxed text-gray-400">
-                          {simplifyForFounder(item.founder_note, founderMode)}
-                        </div>
-                      </div>
-                    ))}
-                    {category.items.length === 0 && (
-                      <div className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-gray-400">
-                        {category.emptyMessage}
-                      </div>
-                    )}
-                  </div>
-
-                  {category.items.length > defaultLimit && (
-                    <button
-                      type="button"
-                      onClick={() => setExpandedSections((current) => ({
-                        ...current,
-                        [category.key]: !expanded,
-                      }))}
-                      className="mt-3 text-xs font-medium text-indigo-300 transition-colors hover:text-indigo-200"
-                    >
-                      {expanded ? 'Show less' : `Show ${category.items.length - defaultLimit} more`}
-                    </button>
-                  )}
-                </section>
-              );
-            })}
-          </div>
+          </section>
         </div>
       </div>
 
