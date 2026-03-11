@@ -8,7 +8,6 @@ import ArchitectureDiagram from '@/components/ArchitectureDiagram';
 import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
-import JourneyMap from '@/components/JourneyMap';
 import TechStackDashboard from '@/components/TechStackDashboard';
 import QAChat from '@/components/QAChat';
 import RiskPanel from '@/components/RiskPanel';
@@ -462,7 +461,6 @@ export default function ProjectDetail() {
   const tabs = [
     { id: 'architecture', label: 'Architecture' },
     { id: 'version-diff', label: 'Version Diff' },
-    { id: 'journeys', label: 'Business Flows' },
     { id: 'techstack', label: 'Tech Stack' },
     { id: 'risks', label: 'Risks' },
   ];
@@ -664,33 +662,6 @@ export default function ProjectDetail() {
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
                     {project.status !== 'analyzing' && 'Upload documents and run analysis to see architecture'}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === 'journeys' && (
-            <>
-              {analysis && selectedVersion ? (
-                <JourneyMap
-                  projectId={projectId}
-                  analysisId={selectedVersion}
-                  founderMode={founderMode}
-                  founderJourneyRewrites={analysis.founder_content?.journey_rewrites}
-                  problemStatement={analysis.business_context?.problem_statement}
-                  valueFeatures={analysis.business_context?.value_features}
-                  narrativeComponents={activeNarrative?.components}
-                  onSelectModule={(moduleId) => {
-                    setHighlightedModuleId(moduleId);
-                    setActiveTab('architecture');
-                  }}
-                />
-              ) : (
-                <div className="text-center text-gray-500 py-12">
-                  <p className="font-medium text-gray-400">No journey data yet</p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Run analysis to generate user journey architecture.
                   </p>
                 </div>
               )}
