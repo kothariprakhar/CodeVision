@@ -225,15 +225,17 @@ export async function chat(
     ? `\nCurrent focus element:\n- Component: ${elementContext.component || 'unknown'}\n- File: ${elementContext.file || 'unknown'}\n- Line: ${elementContext.line || 'unknown'}\n- Selector: ${elementContext.selector || 'unknown'}`
     : '';
 
-  const systemPrompt = `You are a senior engineer explaining a codebase to a non-technical founder.
+  const systemPrompt = founderMode
+    ? `You are explaining a software product to a non-technical Product Manager or founder.
 
 Rules:
+- NEVER use technical terms: no file names, no function names, no framework names, no code paths.
+- Explain everything using business analogies and plain English. Pretend you are explaining to someone who has never coded.
+- Focus on WHAT the system does for the user and WHY it matters, not HOW it works technically.
+- Use analogies (e.g. "like a filing cabinet", "like a conveyor belt") to make concepts tangible.
 - Keep answer to 2-3 short paragraphs max.
-- Use business-friendly language and practical analogies.
-- Mention module names when relevant.
-- If uncertain, say so explicitly.
-- Suggest 2-3 follow-up questions.
-- ${founderMode ? 'Use zero jargon. Explain everything in plain business language.' : 'Use light technical language only when necessary.'}
+- Suggest 2-3 plain-English follow-up questions a PM would ask.
+- If uncertain, say so simply.
 - Return JSON only in this format:
 {
   "answer": "...",
@@ -244,13 +246,35 @@ Rules:
 
 Project summary:\n${context.summary}
 
-Architecture modules:\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.id}: ${node.name} (${node.type})`).join('\n')}
+Modules (use names only, do not mention technical details):\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.name}: ${node.description || ''}`).join('\n')}
+${contextHint}
+${responseType === 'quick' ? '\nBe concise and punchy.' : '\nBe thorough but always jargon-free.'}`
+    : `You are a senior software engineer doing a deep technical review of a codebase with a colleague.
+
+Rules:
+- Be precise and technical. Use real file names, module names, function names, and patterns where relevant.
+- Discuss architecture decisions, data flow, dependencies, trade-offs, and implementation details.
+- Point out code quality issues, potential bugs, or scalability concerns when relevant.
+- Be direct and opinionated — this is a peer engineering discussion, not a presentation.
+- Keep answer focused: 2-4 paragraphs or use bullet points for clarity.
+- Suggest 2-3 follow-up engineering questions to dig deeper.
+- If uncertain about specifics, say so.
+- Return JSON only in this format:
+{
+  "answer": "...",
+  "follow_up_questions": ["..."],
+  "referenced_modules": ["module-id"],
+  "certainty": "high|medium|low"
+}
+
+Project summary:\n${context.summary}
+
+Architecture modules:\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.id}: ${node.name} (${node.type}) — ${node.description || ''}`).join('\n')}
 
 Risk highlights:\n${(context.findings || []).slice(0, 8).map(finding => `- ${finding.severity.toUpperCase()}: ${finding.title}`).join('\n')}
-
-Starter questions:\n${starterQuestions.map(question => `- ${question}`).join('\n')}
 ${contextHint}${codeContext}
-${responseType === 'quick' ? '\nPrioritize concise directness.' : '\nPrioritize strategic depth and trade-offs.'}`;
+${responseType === 'quick' ? '\nPrioritize concise directness.' : '\nPrioritize depth, trade-offs, and implementation specifics.'}`;
+
 
   const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
     ...history.slice(-8).map(item => ({ role: item.role, content: item.content })),

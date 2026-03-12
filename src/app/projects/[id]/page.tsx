@@ -11,7 +11,7 @@ import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
 import TechStackDashboard from '@/components/TechStackDashboard';
-import QAChat from '@/components/QAChat';
+import ChatPanel from '@/components/ChatPanel';
 import RiskPanel from '@/components/RiskPanel';
 import VersionDiffView from '@/components/VersionDiffView';
 import ModulesView from '@/components/ModulesView';
@@ -105,7 +105,7 @@ export default function ProjectDetail() {
   const [hasShownPrompt, setHasShownPrompt] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'slides' | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [qaExpanded, setQaExpanded] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const founderMode = true;
@@ -764,36 +764,35 @@ export default function ProjectDetail() {
 
       </div>
 
-      {analysis && selectedVersion && (
-        <div className="glass-refined rounded-2xl mt-6 overflow-hidden">
+      </div>
+      </div>
+
+      {/* Floating chat button — above export button */}
+      {selectedVersion && (
+        <div className="fixed bottom-[11.5rem] right-6 z-[1000] group">
+          {/* "Need any help?" chat bubble — top-left of button, tail points to button */}
+          <div className="absolute bottom-full right-full mb-2 mr-[-0.5rem] whitespace-nowrap pointer-events-none">
+            <div className="relative rounded-2xl rounded-br-sm bg-cyan-500 px-3 py-2 text-xs font-semibold text-white shadow-lg">
+              Need any help? ✨
+              {/* Tail pointing toward bottom-right (the button) */}
+              <div className="absolute right-0 -bottom-2 h-0 w-0 border-b-[8px] border-b-transparent border-l-[10px] border-l-cyan-500" />
+            </div>
+          </div>
           <button
-            onClick={() => setQaExpanded(value => !value)}
-            className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
+            onClick={() => setChatOpen(true)}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-teal-600 shadow-lg transition-transform duration-200 hover:scale-110"
           >
-            <span className="flex items-center gap-2">💬 Ask about this repository</span>
-            <svg
-              className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            {/* Chat bubble icon */}
+            <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
             </svg>
           </button>
-          {qaExpanded && (
-            <div className="px-6 pb-6">
-              <QAChat
-                analysisId={selectedVersion}
-                founderMode={founderMode}
-                onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
-                onOpenArchitecture={() => setActiveTab('architecture')}
-              />
-            </div>
-          )}
+          {/* Hover label to the left */}
+          <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100">
+            Your Code Whisperer
+          </span>
         </div>
       )}
-      </div>
-      </div>
 
       {/* Export button — floats above the persistent FeedbackButton (z-[999]) */}
       {selectedVersion && (
@@ -840,6 +839,15 @@ export default function ProjectDetail() {
         isOpen={isFeedbackPanelOpen}
         onClose={() => setIsFeedbackPanelOpen(false)}
         projectId={projectId}
+      />
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        analysisId={selectedVersion || ''}
+        onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
+        onOpenArchitecture={() => setActiveTab('architecture')}
       />
     </div>
   );

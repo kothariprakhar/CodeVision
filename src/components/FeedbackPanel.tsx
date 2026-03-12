@@ -85,12 +85,12 @@ export default function FeedbackPanel({ isOpen, onClose, projectId }: FeedbackPa
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-[998] animate-fade-in"
+        className="fixed inset-0 bg-black/50 z-[1002] animate-fade-in"
         onClick={onClose}
       />
 
       {/* Panel */}
-      <div className="fixed top-0 right-0 h-full w-full sm:w-[400px] bg-gradient-to-br from-gray-900/95 to-purple-900/95 backdrop-blur-xl shadow-2xl z-[999] animate-slide-in-right">
+      <div className="fixed top-0 right-0 h-full w-full sm:w-[400px] bg-gradient-to-br from-gray-900/95 to-purple-900/95 backdrop-blur-xl shadow-2xl z-[1003] animate-slide-in-right">
         {/* Header */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center justify-between">
