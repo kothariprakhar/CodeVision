@@ -107,6 +107,7 @@ export default function ProjectDetail() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [qaExpanded, setQaExpanded] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const founderMode = true;
 
   const fetchProject = useCallback(async () => {
@@ -222,6 +223,17 @@ export default function ProjectDetail() {
   useEffect(() => {
     setExportMenuOpen(false);
   }, [activeTab, selectedVersion]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportMenuOpen]);
 
   const handleVersionChange = (versionId: string) => {
     setSelectedVersion(versionId);
@@ -783,10 +795,11 @@ export default function ProjectDetail() {
       </div>
       </div>
 
+      {/* Export button — floats above the persistent FeedbackButton (z-[999]) */}
       {selectedVersion && (
-        <div className="fixed bottom-6 right-6 z-40">
+        <div ref={exportMenuRef} className="fixed bottom-[6.5rem] right-6 z-[1000]">
           {exportMenuOpen && (
-            <div className="mb-2 w-44 rounded-xl border border-white/15 bg-[#0d1324]/95 p-2 shadow-2xl shadow-indigo-500/20">
+            <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-white/15 bg-[#0d1324]/95 p-2 shadow-2xl shadow-black/40">
               <button
                 onClick={() => exportAnalysis('pdf')}
                 disabled={exporting !== null}
@@ -805,9 +818,14 @@ export default function ProjectDetail() {
           )}
           <button
             onClick={() => setExportMenuOpen(value => !value)}
-            className="rounded-full border border-indigo-400/45 bg-indigo-500/25 px-4 py-3 text-xs font-semibold text-indigo-100 shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-500/35"
+            className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 shadow-lg transition-transform duration-200 hover:scale-110"
           >
-            Export
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-6 w-6 text-white">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100">
+              Export
+            </span>
           </button>
         </div>
       )}
