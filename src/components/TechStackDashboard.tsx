@@ -209,36 +209,36 @@ export default function TechStackDashboard({
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
             <h3 className="text-sm font-semibold text-white">Frameworks & Tooling</h3>
             <div className="mt-3 space-y-2">
               {data.frameworks.slice(0, 8).map(item => (
-                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm text-white">{item.name}</div>
+                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
                   <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
             <h3 className="text-sm font-semibold text-white">Infrastructure</h3>
             <div className="mt-3 space-y-2">
               {data.infrastructure.slice(0, 8).map(item => (
-                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm text-white">{item.name}</div>
+                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
                   <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
                 </div>
               ))}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
             <h3 className="text-sm font-semibold text-white">External Services</h3>
             <div className="mt-3 space-y-2">
               {data.external_services.slice(0, 8).map(item => (
-                <div key={item.name} className="rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm text-white">{item.name}</div>
+                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
                   <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
                 </div>
               ))}
@@ -312,8 +312,8 @@ export default function TechStackDashboard({
           <h3 className="text-sm font-semibold text-white">External Services (Business Impact)</h3>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {externalDeps.slice(0, 8).map(dep => (
-              <article key={dep.name} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                <h4 className="text-sm font-semibold text-indigo-200">{dep.name}</h4>
+              <article key={dep.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-3">
+                <h4 className="text-sm font-semibold leading-tight text-indigo-200 break-words [overflow-wrap:anywhere]">{dep.name}</h4>
                 <p className="mt-1 text-xs text-gray-300">
                   Why needed: {simplifyForFounder(dep.why_needed, founderMode)}
                 </p>
