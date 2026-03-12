@@ -72,15 +72,30 @@ const INCLUDED_SPECIAL_FILES = new Set([
 ]);
 
 const EXCLUDED_DIRS = new Set([
+  // Version control & dependencies
   '.git',
   'node_modules',
   'vendor',
+  // Build output
   '.next',
   'dist',
   'build',
+  'out',
+  'coverage',
+  // Python caches
   '__pycache__',
   '.pytest_cache',
   '.mypy_cache',
+  // Test infrastructure
+  'e2e',
+  'playwright',
+  // Non-source directories (not business logic)
+  'migrations',
+  'scripts',
+  'public',
+  'static',
+  'assets',
+  'docs',
 ]);
 
 const EXCLUDED_LOCK_FILES = new Set([
@@ -335,6 +350,8 @@ function shouldIncludeFile(relativePath: string): boolean {
 
 function shouldSkipDirectory(name: string): boolean {
   const lower = name.toLowerCase();
+  // Skip all hidden/dotfile directories (e.g. .beads, .github, .claude, .venv)
+  if (name.startsWith('.')) return true;
   return EXCLUDED_DIRS.has(lower);
 }
 

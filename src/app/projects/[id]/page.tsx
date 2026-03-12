@@ -14,9 +14,10 @@ import TechStackDashboard from '@/components/TechStackDashboard';
 import QAChat from '@/components/QAChat';
 import RiskPanel from '@/components/RiskPanel';
 import VersionDiffView from '@/components/VersionDiffView';
-import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
+import ModulesView from '@/components/ModulesView';
+import UserFlowView from '@/components/UserFlowView';
 import { useAuth } from '@/lib/hooks/useAuth';
-import type { ArchitectureVisualization } from '@/lib/db';
+import type { ArchitectureVisualization, BusinessContext } from '@/lib/db';
 
 interface Project {
   id: string;
@@ -462,9 +463,11 @@ export default function ProjectDetail() {
   }
 
   const tabs = [
-    { id: 'architecture', label: 'Architecture' },
-    { id: 'version-diff', label: 'Version Diff' },
+    { id: 'architecture', label: 'Architecture Map' },
+    { id: 'modules', label: 'Modules' },
+    { id: 'user-flow', label: 'User Flow' },
     { id: 'techstack', label: 'Tech Stack' },
+    { id: 'version-diff', label: 'Version Diff' },
     { id: 'risks', label: 'Risks' },
   ];
 
@@ -671,6 +674,32 @@ export default function ProjectDetail() {
             </>
           )}
 
+          {activeTab === 'modules' && (
+            <>
+              {analysis?.architecture ? (
+                <ModulesView architecture={analysis.architecture} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No modules data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">Run analysis to see module breakdown.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'user-flow' && (
+            <>
+              {analysis?.architecture ? (
+                <UserFlowView architecture={analysis.architecture} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No user flow data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">Run analysis to see user flow diagram.</p>
+                </div>
+              )}
+            </>
+          )}
+
           {activeTab === 'version-diff' && (
             <VersionDiffView
               projectId={projectId}
@@ -721,35 +750,36 @@ export default function ProjectDetail() {
           )}
         </div>
 
-        {analysis && selectedVersion && (
-          <div className="border-t border-white/10">
-            <button
-              onClick={() => setQaExpanded(value => !value)}
-              className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
-            >
-              <span className="flex items-center gap-2">💬 Ask about this repository</span>
-              <svg
-                className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {qaExpanded && (
-              <div className="px-6 pb-6">
-                <QAChat
-                  analysisId={selectedVersion}
-                  founderMode={founderMode}
-                  onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
-                  onOpenArchitecture={() => setActiveTab('architecture')}
-                />
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {analysis && selectedVersion && (
+        <div className="glass-refined rounded-2xl mt-6 overflow-hidden">
+          <button
+            onClick={() => setQaExpanded(value => !value)}
+            className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
+          >
+            <span className="flex items-center gap-2">💬 Ask about this repository</span>
+            <svg
+              className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {qaExpanded && (
+            <div className="px-6 pb-6">
+              <QAChat
+                analysisId={selectedVersion}
+                founderMode={founderMode}
+                onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
+                onOpenArchitecture={() => setActiveTab('architecture')}
+              />
+            </div>
+          )}
+        </div>
+      )}
       </div>
       </div>
 

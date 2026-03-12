@@ -1,5 +1,8 @@
 'use client';
 
+// ABOUTME: Interactive physics-based architecture diagram with domain coloring and particle system.
+// ABOUTME: Renders nodes as SVG cards with force-directed layout, fullscreen mode, and founder-friendly mode.
+
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { simplifyForFounder } from '@/lib/utils/founder-language';

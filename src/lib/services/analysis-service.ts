@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
-import type { ArchitectureVisualization, Finding, FounderContent } from '../db';
+import type { ArchitectureVisualization, DataFlowStep, Finding, FounderContent } from '../db';
 import { normalizeDiagramText, sanitizeDiagramText } from '../utils/text-quality';
 import type { FileEntry } from './chunker-service';
 import type { ParsedDocument } from './file-parser';
@@ -38,10 +38,11 @@ function getAnthropicClient(): Anthropic {
 }
 
 const PASS1ModuleSummarySchema = z.object({
+  display_name: z.string().min(1),
+  file_paths: z.array(z.string()).default([]),
   plain_summary: z.string().min(1),
   business_function: z.string().min(1),
   key_technologies: z.array(z.string()).default([]),
-  file_count: z.number().int().nonnegative(),
   estimated_loc: z.number().int().nonnegative(),
 });
 
@@ -552,6 +553,28 @@ function buildModuleInput(repoData: RepoData): Array<{
   });
 }
 
+function buildFileTreeContext(repoData: RepoData): string {
+  // Use manifest (FileEntry[]) which has priority_score and imports as strings
+  const topFiles = [...repoData.manifest]
+    .sort((a, b) => b.priority_score - a.priority_score)
+    .slice(0, 200);
+
+  const lines = topFiles.map(f => {
+    const exports = (f.exports || []).slice(0, 4).join(', ');
+    const exportStr = exports ? ` | exports: ${exports}` : '';
+    return `${f.path} [${f.language ?? 'unknown'}${exportStr}]`;
+  });
+
+  const techs = Array.from(
+    new Set(topFiles.flatMap(f => f.imports?.map(i => i.split('/')[0]) ?? []))
+  )
+    .filter(t => !t.startsWith('.') && !t.startsWith('@/'))
+    .slice(0, 20)
+    .join(', ');
+
+  return `Files (${topFiles.length} shown, sorted by importance):\n${lines.join('\n')}\n\nDetected technologies: ${techs}`;
+}
+
 function inferNodeType(category: string): ArchitectureVisualization['nodes'][number]['type'] {
   if (category === 'route') return 'api';
   if (category === 'service') return 'service';
@@ -567,6 +590,39 @@ function inferEdgeTypeFromRelationship(relationship: PASS2Output['relationships'
   if (/(persist|store|database|save|write)/.test(joined)) return 'stores';
   if (/(click|submit|request|trigger|action|event)/.test(joined)) return 'calls';
   return 'imports';
+}
+
+// Packages that should NOT appear as external architecture nodes.
+// These are frameworks, runtimes, Node builtins, and tooling — not genuine external services.
+const EXCLUDED_EXTERNAL_PACKAGES = new Set([
+  // Node.js built-ins
+  'path', 'url', 'fs', 'os', 'crypto', 'util', 'stream', 'http', 'https',
+  'events', 'buffer', 'querystring', 'child_process', 'net', 'dns', 'zlib',
+  'assert', 'readline', 'timers', 'process', 'module', 'perf_hooks',
+  // Common frameworks — present in nearly every project, not "external services"
+  'next', 'react', 'react-dom', 'vue', 'nuxt', 'svelte',
+  // CSS / styling
+  'tailwindcss', 'styled-components', 'sass', 'less', 'postcss',
+  // Build / test tooling
+  'typescript', 'eslint', 'prettier', 'vitest', 'jest', 'babel',
+  'webpack', 'vite', 'rollup', 'esbuild', 'turbopack',
+  // Common utility libs that aren't "external services"
+  'zod', 'lodash', 'date-fns', 'dayjs', 'uuid', 'clsx', 'classnames',
+  'axios', 'swr', 'react-query', 'zustand', 'jotai', 'immer',
+]);
+
+function isExcludedExternalPackage(name: string): boolean {
+  if (EXCLUDED_EXTERNAL_PACKAGES.has(name)) return true;
+  // Exclude sub-paths of excluded packages (e.g. next/server, next/jest.js)
+  const basePackage = name.includes('/') && !name.startsWith('@')
+    ? name.split('/')[0]
+    : null;
+  if (basePackage && EXCLUDED_EXTERNAL_PACKAGES.has(basePackage)) return true;
+  // Exclude internal path aliases
+  if (name.startsWith('@/') || name.startsWith('./') || name.startsWith('../')) return true;
+  // Exclude testing / linting scoped packages
+  if (/^@(testing-library|types|typescript-eslint|eslint|vitest|jest)\//.test(name)) return true;
+  return false;
 }
 
 function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, pass2: PASS2Output): ArchitectureVisualization {
@@ -592,7 +648,7 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
 
     return {
       id: moduleName,
-      name: moduleName,
+      name: summary.display_name || moduleName,
       type: inferNodeType(topCategory),
       complexity,
       description: summary.plain_summary,
@@ -632,6 +688,7 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
   const externalTargets = repoData.dependency_graph.edges
     .filter(edge => edge.target.startsWith('external:'))
     .map(edge => edge.target.replace(/^external:/, ''))
+    .filter(target => !isExcludedExternalPackage(target))
     .slice(0, 6);
 
   externalTargets.forEach(target => {
@@ -692,6 +749,22 @@ function buildDeterministicArchitecture(repoData: RepoData, pass1: PASS1Output, 
   };
 }
 
+function buildDataFlowFromJourneys(
+  pass3Output: PASS3BusinessAnalysis,
+  nodeIdSet: Set<string>
+): DataFlowStep[] {
+  // Use the first user journey as the primary flow narrative
+  const journey = pass3Output.user_journeys?.[0];
+  if (!journey || journey.steps.length === 0) return [];
+
+  return journey.steps.slice(0, 6).map((step, idx) => ({
+    step: idx + 1,
+    label: step.action.length > 35 ? step.action.slice(0, 35) + '\u2026' : step.action,
+    description: step.description,
+    nodeIds: nodeIdSet.has(step.module_name) ? [step.module_name] : [],
+  }));
+}
+
 function backfillModuleSummaries(
   moduleInput: ReturnType<typeof buildModuleInput>,
   pass1: PASS1Output
@@ -700,10 +773,11 @@ function backfillModuleSummaries(
   moduleInput.forEach(moduleItem => {
     if (merged[moduleItem.module_name]) return;
     merged[moduleItem.module_name] = {
+      display_name: moduleItem.module_name.replace(/^src\//, '').replace(/\//g, ' › '),
+      file_paths: [],
       plain_summary: `${moduleItem.module_name} handles ${Object.keys(moduleItem.categories)[0] || 'core'} responsibilities in the system.`,
       business_function: `Supports the ${moduleItem.module_name} portion of the product workflow.`,
       key_technologies: moduleItem.technologies.slice(0, 5),
-      file_count: moduleItem.file_count,
       estimated_loc: moduleItem.estimated_loc,
     };
   });
@@ -736,54 +810,50 @@ function batchModulesForPass1(
 async function runPass1ModuleSummaries(
   repoData: RepoData,
   jobId: string,
-  moduleInput: ReturnType<typeof buildModuleInput>
 ): Promise<PassResult<PASS1Output>> {
-  const pass1Prompt = `You are analyzing a software repository for a non-technical audience.
-For EACH module, provide:
-1) one-sentence plain-English summary of what it does
-2) what business function it serves
-3) key technologies/frameworks used
-4) how many files and approximate lines of code
-Use module_name keys exactly as provided.
+  const pass1Prompt = `You are analyzing a software repository to help non-technical stakeholders understand it.
 
-Output format:
+Group the files below into 5-12 high-level BUSINESS modules — capabilities a product manager or investor would immediately recognize.
+
+Good module names: "Authentication", "Analysis Engine", "GitHub Integration", "Dashboard UI", "Email Notifications"
+Bad module names: "src/lib", "api/routes", "utils", "components", any file path
+
+Rules:
+- Group by business PURPOSE, not directory location (auth code in src/lib/ and src/app/api/auth/ belongs in ONE "Authentication" module)
+- Skip test files, config files, migrations, lock files — they don't need their own module
+- Aim for 5-12 modules. Fewer cohesive modules beats many small ones.
+- Every file should ideally belong to exactly one module; it's OK to omit config/tooling files
+
+For each module output an entry in module_summaries keyed by a short slug (lowercase-hyphenated, e.g. "auth", "analysis-engine"):
+
 {
   "module_summaries": {
-    "module_name": {
-      "plain_summary": "...",
-      "business_function": "...",
-      "key_technologies": ["..."],
-      "file_count": 0,
-      "estimated_loc": 0
+    "auth": {
+      "display_name": "Authentication",
+      "file_paths": ["src/lib/auth.ts", "src/app/api/auth/login/route.ts"],
+      "plain_summary": "Handles user registration, login, and session management.",
+      "business_function": "Lets users securely access their accounts.",
+      "key_technologies": ["Next.js", "Supabase"],
+      "estimated_loc": 340
     }
   }
 }`;
 
-  const batchTokenBudget = Math.max(18000, MAX_INPUT_TOKENS_PER_PASS - 12000);
-  const batches = batchModulesForPass1(moduleInput, batchTokenBudget);
-  const merged: PASS1Output['module_summaries'] = {};
-  const rawParts: string[] = [];
+  const fileTreeContext = buildFileTreeContext(repoData);
+  const context = {
+    job_id: jobId,
+    repo_url: repoData.repo_url,
+    file_tree: fileTreeContext,
+    patterns: repoData.patterns,
+  };
 
-  for (let i = 0; i < batches.length; i += 1) {
-    const batchContext = {
-      job_id: jobId,
-      repo_url: repoData.repo_url,
-      batch_index: i + 1,
-      total_batches: batches.length,
-      modules: batches[i],
-      patterns: repoData.patterns,
-    };
-    const batchPrompt = `${pass1Prompt}\n\nThis is batch ${i + 1}/${batches.length}.`;
-    const result = await runAnthropicPassWithSchema(PASS1OutputSchema, 1, batchPrompt, batchContext);
-    Object.assign(merged, result.parsed.module_summaries);
-    rawParts.push(`Batch ${i + 1}\n${result.raw_response}`);
-  }
+  const result = await runAnthropicPassWithSchema(PASS1OutputSchema, 1, pass1Prompt, context);
 
   return {
     pass_num: 1,
     prompt: pass1Prompt,
-    parsed: { module_summaries: merged },
-    raw_response: rawParts.join('\n\n'),
+    parsed: result.parsed,
+    raw_response: result.raw_response,
   };
 }
 
@@ -956,6 +1026,8 @@ export async function runFullAnalysis(
   jobId: string,
   options?: RunFullAnalysisOptions
 ): Promise<FullAnalysis> {
+  // Allow repoData to be reassigned after PASS 1 rebuilds module_groups
+  let mutableRepoData = repoData;
   const emit = (event: MultiPassProgressEvent): void => {
     options?.onProgress?.(event);
   };
@@ -967,14 +1039,26 @@ export async function runFullAnalysis(
     return cached;
   }
 
-  const moduleInput = buildModuleInput(repoData);
-  const moduleEdgeContext = buildModuleEdgeContext(repoData);
-  const requirementsContext = buildRequirementsContext(repoData.documents);
-  const readmeContent = findReadmeContent(repoData.code_files);
+  const requirementsContext = buildRequirementsContext(mutableRepoData.documents);
+  const readmeContent = findReadmeContent(mutableRepoData.code_files);
 
   emit({ stage: 'pass_1', progress: 50, message: 'Summarizing modules...' });
-  const pass1 = await runPass1ModuleSummaries(repoData, jobId, moduleInput);
-  const moduleSummaries = backfillModuleSummaries(moduleInput, pass1.parsed);
+  const pass1 = await runPass1ModuleSummaries(mutableRepoData, jobId);
+
+  // Rebuild module_groups from Claude's business groupings
+  const fileEntryMap = new Map(mutableRepoData.manifest.map(f => [f.path, f]));
+  const claudeModuleGroups: Record<string, FileEntry[]> = {};
+  for (const [moduleKey, summary] of Object.entries(pass1.parsed.module_summaries)) {
+    const entries = summary.file_paths
+      .map(p => fileEntryMap.get(p))
+      .filter((e): e is FileEntry => e !== undefined);
+    claudeModuleGroups[moduleKey] = entries;
+  }
+  // Replace directory-based groups with Claude's business groupings
+  mutableRepoData = { ...mutableRepoData, module_groups: claudeModuleGroups };
+
+  const moduleEdgeContext = buildModuleEdgeContext(mutableRepoData);
+  const moduleSummaries = pass1.parsed.module_summaries;
 
   emit({ stage: 'pass_2', progress: 65, message: 'Mapping relationships...' });
   const pass2 = await runPass2Relationships(moduleSummaries, moduleEdgeContext);
@@ -1108,7 +1192,7 @@ Output format:
       module_summaries: moduleSummaries,
       relationships: pass2.parsed.relationships,
       business_analysis: pass3.parsed,
-      patterns: repoData.patterns,
+      patterns: mutableRepoData.patterns,
     },
     requirements: requirementsContext,
   });
@@ -1138,14 +1222,19 @@ Output format:
     relationships: pass2.parsed.relationships,
     business_analysis: pass3.parsed,
     architecture_narrative: pass4.parsed,
-    patterns: repoData.patterns,
+    patterns: mutableRepoData.patterns,
   });
 
   const architecture = buildDeterministicArchitecture(
-    repoData,
+    mutableRepoData,
     { module_summaries: moduleSummaries },
     pass2.parsed
   );
+
+  // Attach dataFlow from PASS 3 user journeys
+  const nodeIdSet = new Set(architecture.nodes.map(n => n.id));
+  architecture.dataFlow = buildDataFlowFromJourneys(pass3.parsed, nodeIdSet);
+
   const findings: Finding[] = pass5.parsed.findings.map(item => ({
     type: item.type,
     severity: item.severity,
