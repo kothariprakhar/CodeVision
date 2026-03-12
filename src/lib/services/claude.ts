@@ -1,3 +1,5 @@
+// ABOUTME: Claude AI integration service for analyzing code against requirements.
+// ABOUTME: Sends code files and requirement documents to Claude and parses the structured response.
 import Anthropic from '@anthropic-ai/sdk';
 import { Finding, ArchitectureVisualization } from '../db';
 import { ParsedDocument } from './file-parser';
@@ -59,7 +61,9 @@ export async function analyzeCodeAlignment(input: AnalysisInput): Promise<Analys
 Your task is to analyze the provided requirements documents (PRDs, BRDs, wireframes, etc.) and compare them against the actual codebase to:
 1. Identify GAPS: Features or requirements mentioned in documents that are NOT implemented in code
 2. Identify FIDELITY ISSUES: Features that ARE implemented but don't match the specifications
-3. Map the ARCHITECTURE: Identify major components/modules, their complexity, and how they connect
+3. Map the ARCHITECTURE: Identify 5-12 high-level business modules. Use names a product manager or investor would recognise (e.g. "Authentication", "Analysis Engine", "GitHub Integration") — NOT code artifact names like "analyzeCodeAlignment" or "route.ts". Write each description in plain language that a non-technical stakeholder can understand without any coding knowledge.
+
+4. Describe the DATA FLOW: Narrate 3-6 steps showing how a typical user action flows through the system to produce a result. Write for a non-technical reader — describe WHAT happens, not HOW.
 
 Prioritize findings by business impact, not technical complexity. Use plain language that non-technical people can understand.
 
@@ -92,17 +96,27 @@ Respond with a JSON object in this exact format:
         "to": "target-node-id",
         "type": "imports" or "calls" or "stores" or "renders"
       }
+    ],
+    "dataFlow": [
+      {
+        "step": 1,
+        "label": "Short label, 3-6 words",
+        "description": "One plain-English sentence for a non-technical reader",
+        "nodeIds": ["node-id-1", "node-id-2"]
+      }
     ]
   }
 }
 
 Architecture analysis guide:
-- Node types: ui (frontend components), api (API routes/endpoints), service (business logic), database (data storage), external (third-party services), component (generic module)
-- Complexity is based on: coupling (number of dependencies), code size, and internal complexity
-  - low: Simple, few dependencies, straightforward logic
-  - medium: Moderate dependencies, some business logic
-  - high: Many dependencies, complex logic, critical to system
-- Edges represent how components depend on each other
+- Aim for 5-12 nodes total. Merge closely related files into one meaningful module rather than listing every file separately.
+- Node names must be business-friendly: "Authentication" not "auth.ts", "Analysis Engine" not "analyzeCodeAlignment"
+- Node descriptions must be non-technical: a product manager should understand them without any coding background
+- Node types: ui (anything the user sees), api (request handlers/routes), service (business logic), database (data storage), external (third-party APIs/services), component (shared utility modules)
+- Complexity: low = simple/few dependencies, medium = moderate logic, high = many dependencies and critical to the system
+- Edges represent runtime dependencies between modules
+- dataFlow steps should narrate a story: "User submits form → API validates request → Service processes data → Results stored"
+- dataFlow nodeIds must reference valid ids from the nodes array above
 
 Severity guide for findings:
 - critical: Core functionality missing, project cannot launch

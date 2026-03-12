@@ -39,7 +39,7 @@ describe('QAChat', () => {
       expect(screen.getByText('How does authentication work?')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByPlaceholderText(/ask a question/i), {
+    fireEvent.change(screen.getByPlaceholderText(/ask anything about this codebase/i), {
       target: { value: 'How does authentication work?' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Ask' }));

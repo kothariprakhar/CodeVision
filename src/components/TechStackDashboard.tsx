@@ -139,7 +139,8 @@ export default function TechStackDashboard({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      {/* Row 1: Architecture Pattern (left) | Complexity Score + Languages stacked (right) */}
+      <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="text-xs uppercase tracking-wide text-gray-400">Architecture Pattern</div>
           <div className="mt-2 flex items-center gap-3">
@@ -155,102 +156,113 @@ export default function TechStackDashboard({
           )}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <div className="text-xs uppercase tracking-wide text-gray-400">Complexity Score</div>
-          <div className="mt-3 flex items-center gap-4">
-            <svg width="110" height="110" viewBox="0 0 110 110" className="shrink-0">
-              <circle cx="55" cy="55" r="42" fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="10" />
-              <path
-                d={describeArc(55, 55, 42, 0, gaugeAngle)}
-                fill="none"
-                stroke="rgba(129,140,248,0.95)"
-                strokeWidth="10"
-                strokeLinecap="round"
-              />
-              <text x="55" y="53" textAnchor="middle" fill="white" fontSize="20" fontWeight="700">
-                {data.complexity_score.toFixed(1)}
-              </text>
-              <text x="55" y="71" textAnchor="middle" fill="rgba(148,163,184,0.9)" fontSize="10">
-                out of 10
-              </text>
-            </svg>
-            <div className="space-y-1 text-xs text-gray-300">
-              {data.complexity_factors.slice(0, 4).map(factor => (
-                <div key={factor.label} className="flex items-center justify-between gap-3">
-                  <span>{factor.label}</span>
-                  <span className="text-gray-400">{factor.value}</span>
-                </div>
-              ))}
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">Complexity Score</div>
+            <div className="mt-3 flex items-center gap-4">
+              <svg width="110" height="110" viewBox="0 0 110 110" className="shrink-0">
+                <circle cx="55" cy="55" r="42" fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="10" />
+                <path
+                  d={describeArc(55, 55, 42, 0, gaugeAngle)}
+                  fill="none"
+                  stroke="rgba(129,140,248,0.95)"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                />
+                <text x="55" y="53" textAnchor="middle" fill="white" fontSize="20" fontWeight="700">
+                  {data.complexity_score.toFixed(1)}
+                </text>
+                <text x="55" y="71" textAnchor="middle" fill="rgba(148,163,184,0.9)" fontSize="10">
+                  out of 10
+                </text>
+              </svg>
+              <div className="space-y-1 text-xs text-gray-300">
+                {data.complexity_factors.slice(0, 4).map(factor => (
+                  <div key={factor.label} className="flex items-center justify-between gap-3">
+                    <span>{factor.label}</span>
+                    <span className="text-gray-400">{factor.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">Languages</div>
+            <div className="mt-4 flex items-center gap-4">
+              <div className="relative h-28 w-28 shrink-0 rounded-full" style={donutStyle}>
+                <div className="absolute inset-[18px] rounded-full bg-[#0b1020]" />
+              </div>
+              <div className="space-y-2 text-xs text-gray-300">
+                {data.languages.map((slice, index) => (
+                  <div key={slice.language} className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: LANGUAGE_COLORS[index % LANGUAGE_COLORS.length] }}
+                    />
+                    <span>{slice.language}</span>
+                    <span className="text-gray-500">{slice.percentage}%</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <div className="text-xs uppercase tracking-wide text-gray-400">Languages</div>
-          <div className="mt-4 flex items-center gap-4">
-            <div className="relative h-28 w-28 rounded-full" style={donutStyle}>
-              <div className="absolute inset-[18px] rounded-full bg-[#0b1020]" />
-            </div>
-            <div className="space-y-2 text-xs text-gray-300">
-              {data.languages.map((slice, index) => (
-                <div key={slice.language} className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: LANGUAGE_COLORS[index % LANGUAGE_COLORS.length] }}
-                  />
-                  <span>{slice.language}</span>
-                  <span className="text-gray-500">{slice.percentage}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* Frameworks & Tooling — horizontal chips */}
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <h3 className="text-sm font-semibold text-white">Frameworks & Tooling</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {data.frameworks.slice(0, 20).map(item => (
+            <span
+              key={item.name}
+              title={simplifyForFounder(item.founder_note, founderMode)}
+              className="max-w-full break-all rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-gray-200"
+            >
+              {item.name}
+            </span>
+          ))}
         </div>
+      </section>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <h3 className="text-sm font-semibold text-white">Frameworks & Tooling</h3>
-            <div className="mt-3 space-y-2">
-              {data.frameworks.slice(0, 8).map(item => (
-                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
-                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <h3 className="text-sm font-semibold text-white">Infrastructure</h3>
-            <div className="mt-3 space-y-2">
-              {data.infrastructure.slice(0, 8).map(item => (
-                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
-                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <h3 className="text-sm font-semibold text-white">External Services</h3>
-            <div className="mt-3 space-y-2">
-              {data.external_services.slice(0, 8).map(item => (
-                <div key={item.name} className="min-w-0 rounded-lg border border-white/10 bg-black/20 p-2">
-                  <div className="text-sm leading-tight text-white break-words [overflow-wrap:anywhere]">{item.name}</div>
-                  <div className="text-xs text-gray-400">{simplifyForFounder(item.founder_note, founderMode)}</div>
-                </div>
-              ))}
-              {data.external_services.length === 0 && (
-                <div className="rounded-lg border border-white/10 bg-black/20 p-2 text-xs text-gray-400">
-                  No major external services detected.
-                </div>
-              )}
-            </div>
-          </section>
+      {/* Infrastructure — horizontal chips */}
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <h3 className="text-sm font-semibold text-white">Infrastructure</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {data.infrastructure.slice(0, 20).map(item => (
+            <span
+              key={item.name}
+              title={simplifyForFounder(item.founder_note, founderMode)}
+              className="max-w-full break-all rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-gray-200"
+            >
+              {item.name}
+            </span>
+          ))}
+          {data.infrastructure.length === 0 && (
+            <span className="text-xs text-gray-500">No infrastructure detected.</span>
+          )}
         </div>
-      </div>
+      </section>
+
+      {/* External Services — horizontal chips */}
+      <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <h3 className="text-sm font-semibold text-white">External Services</h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {data.external_services.slice(0, 20).map(item => (
+            <span
+              key={item.name}
+              title={simplifyForFounder(item.founder_note, founderMode)}
+              className="max-w-full break-all rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-gray-200"
+            >
+              {item.name}
+            </span>
+          ))}
+          {data.external_services.length === 0 && (
+            <span className="text-xs text-gray-500">No external services detected.</span>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
         <h3 className="text-sm font-semibold text-white">What This Means (Founder View)</h3>

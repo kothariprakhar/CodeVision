@@ -1,3 +1,5 @@
+// ABOUTME: Supabase client initialization and shared TypeScript types for the application.
+// ABOUTME: Defines interfaces for User, Project, Analysis, Architecture, and other core entities.
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -112,9 +114,17 @@ export interface ArchitectureEdge {
   trigger?: string;
 }
 
+export interface DataFlowStep {
+  step: number;
+  label: string;
+  description: string;
+  nodeIds: string[];
+}
+
 export interface ArchitectureVisualization {
   nodes: ArchitectureNode[];
   edges: ArchitectureEdge[];
+  dataFlow?: DataFlowStep[];
 }
 
 export interface Workspace {
@@ -287,6 +297,18 @@ export interface QualityReport {
   needs_manual_input: string[];
 }
 
+export interface NarrativeMode {
+  executive_summary: string;
+  how_it_works: string;
+  components: Array<{
+    name: string;
+    explanation: string;
+    business_analogy: string;
+  }>;
+  scale_assessment: string;
+  technology_choices: string[];
+}
+
 export interface FounderNarrative {
   executive_summary: string;
   how_it_works: string;
@@ -319,8 +341,8 @@ export interface BusinessContext {
     why_needed: string;
     what_breaks_without_it: string;
   }>;
-  founder_narrative: FounderNarrative;
-  technical_narrative: FounderNarrative;
+  founder_narrative: NarrativeMode;
+  technical_narrative: NarrativeMode;
 }
 
 export interface FounderContent {

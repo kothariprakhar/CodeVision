@@ -1,4 +1,6 @@
 'use client';
+// ABOUTME: Project detail page showing architecture diagram, issues, and analysis controls.
+// ABOUTME: Allows uploading requirement documents and running analysis on a GitHub repository.
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,11 +11,13 @@ import AnalysisVersionSelector from '@/components/AnalysisVersionSelector';
 import FeedbackPrompt from '@/components/FeedbackPrompt';
 import FeedbackPanel from '@/components/FeedbackPanel';
 import TechStackDashboard from '@/components/TechStackDashboard';
-import QAChat from '@/components/QAChat';
+import ChatPanel from '@/components/ChatPanel';
 import RiskPanel from '@/components/RiskPanel';
 import VersionDiffView from '@/components/VersionDiffView';
-import type { ArchitectureVisualization, BusinessContext } from '@/components/diagram/types';
+import ModulesView from '@/components/ModulesView';
+import UserFlowView from '@/components/UserFlowView';
 import { useAuth } from '@/lib/hooks/useAuth';
+import type { ArchitectureVisualization, BusinessContext } from '@/lib/db';
 
 interface Project {
   id: string;
@@ -101,8 +105,9 @@ export default function ProjectDetail() {
   const [hasShownPrompt, setHasShownPrompt] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'slides' | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [qaExpanded, setQaExpanded] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
   const founderMode = true;
 
   const fetchProject = useCallback(async () => {
@@ -218,6 +223,17 @@ export default function ProjectDetail() {
   useEffect(() => {
     setExportMenuOpen(false);
   }, [activeTab, selectedVersion]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportMenuOpen]);
 
   const handleVersionChange = (versionId: string) => {
     setSelectedVersion(versionId);
@@ -459,9 +475,11 @@ export default function ProjectDetail() {
   }
 
   const tabs = [
-    { id: 'architecture', label: 'Architecture' },
-    { id: 'version-diff', label: 'Version Diff' },
+    { id: 'architecture', label: 'Architecture Map' },
+    { id: 'modules', label: 'Modules' },
+    { id: 'user-flow', label: 'User Flow' },
     { id: 'techstack', label: 'Tech Stack' },
+    { id: 'version-diff', label: 'Version Diff' },
     { id: 'risks', label: 'Risks' },
   ];
 
@@ -668,6 +686,32 @@ export default function ProjectDetail() {
             </>
           )}
 
+          {activeTab === 'modules' && (
+            <>
+              {analysis?.architecture ? (
+                <ModulesView architecture={analysis.architecture} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No modules data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">Run analysis to see module breakdown.</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'user-flow' && (
+            <>
+              {analysis?.architecture ? (
+                <UserFlowView architecture={analysis.architecture} />
+              ) : (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="font-medium text-gray-400">No user flow data yet</p>
+                  <p className="text-sm text-gray-600 mt-1">Run analysis to see user flow diagram.</p>
+                </div>
+              )}
+            </>
+          )}
+
           {activeTab === 'version-diff' && (
             <VersionDiffView
               projectId={projectId}
@@ -718,42 +762,43 @@ export default function ProjectDetail() {
           )}
         </div>
 
-        {analysis && selectedVersion && (
-          <div className="border-t border-white/10">
-            <button
-              onClick={() => setQaExpanded(value => !value)}
-              className="flex w-full items-center justify-between px-6 py-3 text-sm font-medium text-gray-300 transition-colors hover:text-white"
-            >
-              <span className="flex items-center gap-2">💬 Ask about this repository</span>
-              <svg
-                className={`h-4 w-4 transition-transform ${qaExpanded ? 'rotate-180' : ''}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {qaExpanded && (
-              <div className="px-6 pb-6">
-                <QAChat
-                  analysisId={selectedVersion}
-                  founderMode={founderMode}
-                  onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
-                  onOpenArchitecture={() => setActiveTab('architecture')}
-                />
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
       </div>
       </div>
 
+      {/* Floating chat button — above export button */}
       {selectedVersion && (
-        <div className="fixed bottom-6 right-6 z-40">
+        <div className="fixed bottom-[11.5rem] right-6 z-[1000] group">
+          {/* "Need any help?" chat bubble — top-left of button, tail points to button */}
+          <div className="absolute bottom-full right-full mb-2 mr-[-0.5rem] whitespace-nowrap pointer-events-none">
+            <div className="relative rounded-2xl rounded-br-sm bg-cyan-500 px-3 py-2 text-xs font-semibold text-white shadow-lg">
+              Need any help? ✨
+              {/* Tail pointing toward bottom-right (the button) */}
+              <div className="absolute right-0 -bottom-2 h-0 w-0 border-b-[8px] border-b-transparent border-l-[10px] border-l-cyan-500" />
+            </div>
+          </div>
+          <button
+            onClick={() => setChatOpen(true)}
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-cyan-500 to-teal-600 shadow-lg transition-transform duration-200 hover:scale-110"
+          >
+            {/* Chat bubble icon */}
+            <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+            </svg>
+          </button>
+          {/* Hover label to the left */}
+          <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100">
+            Your Code Whisperer
+          </span>
+        </div>
+      )}
+
+      {/* Export button — floats above the persistent FeedbackButton (z-[999]) */}
+      {selectedVersion && (
+        <div ref={exportMenuRef} className="fixed bottom-[6.5rem] right-6 z-[1000]">
           {exportMenuOpen && (
-            <div className="mb-2 w-44 rounded-xl border border-white/15 bg-[#0d1324]/95 p-2 shadow-2xl shadow-indigo-500/20">
+            <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-white/15 bg-[#0d1324]/95 p-2 shadow-2xl shadow-black/40">
               <button
                 onClick={() => exportAnalysis('pdf')}
                 disabled={exporting !== null}
@@ -772,9 +817,14 @@ export default function ProjectDetail() {
           )}
           <button
             onClick={() => setExportMenuOpen(value => !value)}
-            className="rounded-full border border-indigo-400/45 bg-indigo-500/25 px-4 py-3 text-xs font-semibold text-indigo-100 shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-500/35"
+            className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 shadow-lg transition-transform duration-200 hover:scale-110"
           >
-            Export
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-6 w-6 text-white">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-3 py-1 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100">
+              Export
+            </span>
           </button>
         </div>
       )}
@@ -789,6 +839,15 @@ export default function ProjectDetail() {
         isOpen={isFeedbackPanelOpen}
         onClose={() => setIsFeedbackPanelOpen(false)}
         projectId={projectId}
+      />
+
+      {/* Chat Panel */}
+      <ChatPanel
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        analysisId={selectedVersion || ''}
+        onHighlightModule={(moduleId) => setHighlightedModuleId(moduleId)}
+        onOpenArchitecture={() => setActiveTab('architecture')}
       />
     </div>
   );

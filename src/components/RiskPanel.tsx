@@ -147,14 +147,6 @@ export default function RiskPanel({
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-gray-300">
-          <span className="rounded-full border border-white/15 bg-black/25 px-3 py-1">
-            Estimated remediation: {data.estimated_remediation_days} days
-          </span>
-          <span className="rounded-full border border-white/15 bg-black/25 px-3 py-1">
-            Approx cost: ${data.estimated_remediation_cost_usd.toLocaleString()}
-          </span>
-        </div>
       </div>
 
       {(['critical', 'high', 'medium', 'low'] as Array<RiskItem['severity']>).map(severity => (
@@ -191,14 +183,6 @@ export default function RiskPanel({
                   {isExpanded && (
                     <div className="mt-3 space-y-2 border-t border-white/15 pt-3 text-xs">
                       <p>{simplifyForFounder(displayWhyItMatters, founderMode)}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full border border-white/20 bg-black/20 px-2 py-1">
-                          Effort: {risk.estimated_effort_days} days
-                        </span>
-                        <span className="rounded-full border border-white/20 bg-black/20 px-2 py-1">
-                          Cost: ${risk.remediation_cost_usd.toLocaleString()}
-                        </span>
-                      </div>
                       {risk.evidence.length > 0 && (
                         <ul className="list-disc space-y-1 pl-5 opacity-90">
                           {risk.evidence.slice(0, 5).map(item => (

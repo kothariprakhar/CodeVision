@@ -1,3 +1,6 @@
+// ABOUTME: Conversational Q&A chat component for querying codebase analysis results.
+// ABOUTME: Supports Normal and Developer modes, rendering module highlights and follow-up suggestions.
+
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -28,6 +31,8 @@ interface QAChatProps {
   onHighlightModule?: (moduleId: string) => void;
   onOpenArchitecture?: () => void;
   founderMode?: boolean;
+  devMode?: boolean;
+  clearKey?: number;
 }
 
 export default function QAChat({
@@ -35,6 +40,8 @@ export default function QAChat({
   onHighlightModule,
   onOpenArchitecture,
   founderMode = false,
+  devMode = false,
+  clearKey = 0,
 }: QAChatProps) {
   const [messages, setMessages] = useState<QAHistoryMessage[]>([]);
   const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
@@ -42,6 +49,7 @@ export default function QAChat({
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const endRef = useRef<HTMLDivElement>(null);
+  const prevClearKey = useRef(clearKey);
 
   useEffect(() => {
     if (!analysisId) return;
@@ -69,6 +77,14 @@ export default function QAChat({
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (clearKey !== prevClearKey.current) {
+      prevClearKey.current = clearKey;
+      setMessages([]);
+      setStarterQuestions([]);
+    }
+  }, [clearKey]);
+
   const sendQuestion = async (questionText?: string): Promise<void> => {
     const question = (questionText || input).trim();
     if (!question || loading) return;
@@ -89,7 +105,7 @@ export default function QAChat({
       const response = await fetch(`/api/qa/${analysisId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question, founderMode }),
+        body: JSON.stringify({ question, founderMode: !devMode }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Failed to get answer');
@@ -121,13 +137,8 @@ export default function QAChat({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02]">
-      <div className="border-b border-white/10 px-4 py-3">
-        <h3 className="text-sm font-semibold text-white">Conversational Q&A</h3>
-        <p className="text-xs text-gray-400">Ask in plain English. Answers stay founder-friendly and module-aware.</p>
-      </div>
-
-      <div className="h-[380px] space-y-4 overflow-y-auto p-4">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 p-4">
         {messages.length === 0 ? (
           <div className="space-y-3 text-xs text-gray-300">
             <div className="text-sm text-gray-400">Suggested starters</div>
@@ -140,7 +151,11 @@ export default function QAChat({
                 <button
                   key={question}
                   onClick={() => sendQuestion(question)}
-                  className="rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1.5 text-xs text-indigo-200 transition-colors hover:bg-indigo-500/20"
+                  className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${
+                    devMode
+                      ? 'border-red-400/30 bg-red-950/30 text-red-300 hover:bg-red-950/50 font-mono'
+                      : 'border-indigo-400/30 bg-indigo-500/10 text-indigo-200 hover:bg-indigo-500/20'
+                  }`}
                 >
                   {question}
                 </button>
@@ -152,8 +167,12 @@ export default function QAChat({
             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[86%] rounded-2xl px-4 py-3 text-sm ${
                 message.role === 'user'
-                  ? 'border border-indigo-500/25 bg-indigo-500/20 text-indigo-50'
-                  : 'border border-white/10 bg-black/30 text-gray-100'
+                  ? devMode
+                    ? 'border border-red-500/25 bg-red-950/60 text-red-50 font-mono text-xs'
+                    : 'border border-indigo-500/25 bg-indigo-500/20 text-indigo-50'
+                  : devMode
+                    ? 'border border-red-900/40 bg-black/60 text-gray-100'
+                    : 'border border-white/10 bg-black/30 text-gray-100'
               }`}>
                 <div className="whitespace-pre-wrap leading-relaxed">
                   {message.role === 'assistant'
@@ -186,7 +205,11 @@ export default function QAChat({
                         <button
                           key={`${message.id}-${question}`}
                           onClick={() => sendQuestion(question)}
-                          className="rounded-full border border-white/20 bg-white/5 px-2.5 py-1 text-xs text-gray-200 hover:bg-white/10"
+                          className={`rounded-full border px-2.5 py-1 text-xs ${
+                            devMode
+                              ? 'border-red-500/25 bg-red-950/30 text-red-200 hover:bg-red-950/50 font-mono'
+                              : 'border-white/20 bg-white/5 text-gray-200 hover:bg-white/10'
+                          }`}
                         >
                           {simplifyForFounder(question, founderMode)}
                         </button>
@@ -201,8 +224,10 @@ export default function QAChat({
 
         {loading && (
           <div className="flex justify-start">
-            <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-gray-300">
-              Thinking through the repository...
+            <div className={`rounded-2xl border px-4 py-3 text-sm text-gray-300 ${
+              devMode ? 'border-red-900/40 bg-black/60' : 'border-white/10 bg-black/30'
+            }`}>
+              {devMode ? '$ analyzing codebase...' : 'Thinking through the repository...'}
             </div>
           </div>
         )}
@@ -220,13 +245,22 @@ export default function QAChat({
                 void sendQuestion();
               }
             }}
-            placeholder="Ask a question about architecture, flows, risks, or tech choices"
-            className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-indigo-400/50 focus:outline-none"
+            placeholder={devMode
+              ? 'Ask about architecture, dependencies, code patterns...'
+              : 'Ask anything about this codebase in plain English'
+            }
+            className={`w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-indigo-400/50 focus:outline-none ${
+              devMode ? 'font-mono' : ''
+            }`}
           />
           <button
             onClick={() => sendQuestion()}
             disabled={loading || !input.trim()}
-            className="rounded-xl border border-indigo-400/45 bg-indigo-500/20 px-4 text-sm font-medium text-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`rounded-xl border px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+              devMode
+                ? 'border-red-500/45 bg-red-950/40 text-red-200'
+                : 'border-indigo-400/45 bg-indigo-500/20 text-indigo-100'
+            }`}
           >
             Ask
           </button>
