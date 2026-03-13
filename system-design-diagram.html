@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeVision — System Architecture Diagram</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0B1120;
+    --card: #111827;
+    --border: rgba(99,102,241,0.22);
+    --text: #E2E8F0;
+    --dim: #94A3B8;
+    --accent: #818CF8;
+    --green: #34D399;
+    --blue: #60A5FA;
+    --orange: #FB923C;
+    --purple: #A78BFA;
+    --pink: #F472B6;
+    --cyan: #22D3EE;
+    --red: #F87171;
+    --yellow: #FBBF24;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px 48px 48px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── Print overrides ── */
+  @media print {
+    body { padding: 20px 24px; background: #0B1120 !important; }
+    @page { size: landscape; margin: 12mm; }
+    .no-print { display: none !important; }
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo-box {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: rgba(129,140,248,0.15);
+    border: 1px solid rgba(129,140,248,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+  }
+  .header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+  .header .subtitle { font-size: 13px; color: var(--dim); margin-top: 2px; }
+  .header-right { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+  .stat-chip {
+    text-align: center; padding: 6px 14px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border);
+  }
+  .stat-chip .val { font-size: 18px; font-weight: 700; line-height: 1.2; }
+  .stat-chip .lbl { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ── SVG canvas ── */
+  .diagram-wrap {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    overflow: visible;
+    margin-bottom: 28px;
+  }
+  svg { display: block; }
+  svg text { font-family: 'Inter', system-ui, sans-serif; }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+  }
+  .legend-group { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch {
+    width: 14px; height: 14px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .legend-label { font-size: 11px; color: var(--dim); font-weight: 500; }
+
+  /* ── Pipeline section ── */
+  .section-title {
+    font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--text);
+  }
+  .pipeline-wrap {
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    padding: 28px 32px;
+    margin-bottom: 28px;
+  }
+  .pipeline {
+    display: flex; align-items: flex-start; gap: 0; justify-content: space-between;
+  }
+  .pipe-step {
+    flex: 1; text-align: center; position: relative;
+    padding: 0 6px;
+  }
+  .pipe-circle {
+    width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; border: 2px solid; position: relative; z-index: 1;
+  }
+  .pipe-step .step-num {
+    position: absolute; top: -6px; right: -6px;
+    width: 18px; height: 18px; border-radius: 50%;
+    font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); z-index: 2;
+  }
+  .pipe-step h4 { font-size: 10px; font-weight: 700; margin-bottom: 3px; line-height: 1.3; }
+  .pipe-step p { font-size: 8.5px; color: var(--dim); line-height: 1.4; }
+  .pipe-arrow {
+    position: absolute; top: 24px; right: -14px; z-index: 0;
+    width: 20px; display: flex; align-items: center;
+  }
+  .pipe-arrow svg { width: 20px; height: 12px; }
+
+  /* ── AI Passes ── */
+  .passes { display: flex; gap: 14px; margin-bottom: 28px; }
+  .pass-card {
+    flex: 1; border-radius: 14px; padding: 18px 16px; position: relative; overflow: hidden;
+    border: 1px solid;
+  }
+  .pass-card .bg-num {
+    position: absolute; right: -4px; top: -10px;
+    font-size: 72px; font-weight: 900; opacity: 0.06; pointer-events: none;
+  }
+  .pass-card .pass-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .pass-card .pass-icon { font-size: 26px; }
+  .pass-card .pass-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .pass-card .pass-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .pass-card .pass-desc { font-size: 10px; color: var(--dim); line-height: 1.5; }
+  .pass-card .pass-io { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .pass-card .io-row { display: flex; gap: 6px; margin-bottom: 3px; }
+  .pass-card .io-label { font-size: 8px; font-weight: 700; text-transform: uppercase; min-width: 44px; }
+  .pass-card .io-value { font-size: 9px; color: var(--dim); }
+
+  /* ── Footer ── */
+  .footer {
+    text-align: center; padding: 16px 0; margin-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--dim);
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo-box">🏗️</div>
+    <div>
+      <h1>CodeVision &mdash; System Architecture</h1>
+      <div class="subtitle">AI-Powered Codebase Intelligence Platform &nbsp;|&nbsp; End-to-End System Design</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="stat-chip"><div class="val" style="color:var(--purple)">28+</div><div class="lbl">API Endpoints</div></div>
+    <div class="stat-chip"><div class="val" style="color:var(--orange)">4</div><div class="lbl">Analysis Passes</div></div>
+    <div class="stat-chip"><div class="val" style="color:var(--yellow)">44</div><div class="lbl">Tech Detected</div></div>
+    <div class="stat-chip"><div class="val" style="color:var(--blue)">6</div><div class="lbl">Visual Views</div></div>
+  </div>
+</div>
+
+<!-- ═══════════ MAIN ARCHITECTURE DIAGRAM ═══════════ -->
+<div class="diagram-wrap">
+<svg viewBox="0 0 960 680" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Grid -->
+    <pattern id="g" width="30" height="30" patternUnits="userSpaceOnUse">
+      <rect width="30" height="30" fill="none" stroke="rgba(99,102,241,0.04)" stroke-width="0.5"/>
+    </pattern>
+    <!-- Arrowheads -->
+    <marker id="a-green" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#34D399"/></marker>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#60A5FA"/></marker>
+    <marker id="a-cyan" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22D3EE"/></marker>
+    <marker id="a-accent" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#818CF8"/></marker>
+    <marker id="a-orange" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#FB923C"/></marker>
+    <marker id="a-pink" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#F472B6"/></marker>
+    <marker id="a-yellow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#FBBF24"/></marker>
+    <marker id="a-red" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#F87171"/></marker>
+    <marker id="a-purple" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#A78BFA"/></marker>
+    <marker id="a-dim" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94A3B8"/></marker>
+    <!-- Glow filter -->
+    <filter id="glow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+
+  <rect width="960" height="680" fill="url(#g)"/>
+
+  <!-- ── Zone backgrounds ── -->
+  <rect x="330" y="10" width="300" height="185" rx="16" fill="rgba(52,211,153,0.05)" stroke="rgba(52,211,153,0.12)" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="346" y="30" fill="#5EEAD4" font-size="10" font-weight="600" letter-spacing="0.08em" opacity="0.7">CLIENT LAYER</text>
+
+  <rect x="30" y="215" width="900" height="95" rx="16" fill="rgba(167,139,250,0.04)" stroke="rgba(167,139,250,0.12)" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="46" y="235" fill="#C4B5FD" font-size="10" font-weight="600" letter-spacing="0.08em" opacity="0.7">SERVER / API LAYER</text>
+
+  <rect x="30" y="325" width="900" height="195" rx="16" fill="rgba(129,140,248,0.04)" stroke="rgba(129,140,248,0.12)" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="46" y="345" fill="#A5B4FC" font-size="10" font-weight="600" letter-spacing="0.08em" opacity="0.7">CORE ANALYSIS ENGINE</text>
+
+  <rect x="30" y="555" width="910" height="105" rx="16" fill="rgba(251,146,60,0.04)" stroke="rgba(251,146,60,0.12)" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="46" y="575" fill="#FDBA74" font-size="10" font-weight="600" letter-spacing="0.08em" opacity="0.7">EXTERNAL SERVICES</text>
+
+  <!-- ══════════ EDGES (drawn first, behind nodes) ══════════ -->
+
+  <!-- user → nextjs -->
+  <line x1="460" y1="80" x2="460" y2="120" stroke="#34D399" stroke-width="1.8" marker-end="url(#a-green)" opacity="0.7"/>
+  <text x="470" y="104" fill="#34D399" font-size="8" opacity="0.8">interacts</text>
+
+  <!-- nextjs → api -->
+  <line x1="460" y1="180" x2="460" y2="230" stroke="#60A5FA" stroke-width="1.8" marker-end="url(#a-blue)" opacity="0.7"/>
+  <text x="470" y="210" fill="#60A5FA" font-size="8" opacity="0.8">REST / SSE</text>
+
+  <!-- api → auth -->
+  <path d="M360 260 Q 260 260 180 260" fill="none" stroke="#22D3EE" stroke-width="1.4" marker-end="url(#a-cyan)" opacity="0.6"/>
+  <text x="260" y="252" fill="#22D3EE" font-size="8" opacity="0.7">JWT verify</text>
+
+  <!-- api → analyzer -->
+  <line x1="460" y1="290" x2="460" y2="340" stroke="#818CF8" stroke-width="1.8" marker-end="url(#a-accent)" opacity="0.7"/>
+  <text x="470" y="320" fill="#818CF8" font-size="8" opacity="0.8">triggers</text>
+
+  <!-- api → jobmgr -->
+  <path d="M560 260 Q 660 260 740 260" fill="none" stroke="#FB923C" stroke-width="1.4" marker-end="url(#a-orange)" opacity="0.6"/>
+  <text x="640" y="252" fill="#FB923C" font-size="8" opacity="0.7">job ops</text>
+
+  <!-- api → chat -->
+  <path d="M560 270 Q 680 290 740 360" fill="none" stroke="#F472B6" stroke-width="1.3" marker-end="url(#a-pink)" opacity="0.5"/>
+  <text x="660" y="308" fill="#F472B6" font-size="8" opacity="0.7">Q&A</text>
+
+  <!-- jobmgr → analyzer -->
+  <path d="M800 285 Q 800 320 560 370" fill="none" stroke="#FB923C" stroke-width="1.3" marker-end="url(#a-orange)" opacity="0.5"/>
+  <text x="690" y="320" fill="#FB923C" font-size="7" opacity="0.6">dispatch</text>
+
+  <!-- analyzer → github_svc -->
+  <path d="M360 370 Q 240 370 180 370" fill="none" stroke="#34D399" stroke-width="1.4" marker-end="url(#a-green)" opacity="0.6"/>
+  <text x="250" y="362" fill="#34D399" font-size="8" opacity="0.7">clone repo</text>
+
+  <!-- analyzer → parser -->
+  <path d="M380 400 Q 200 430 180 445" fill="none" stroke="#FBBF24" stroke-width="1.3" marker-end="url(#a-yellow)" opacity="0.5"/>
+  <text x="240" y="426" fill="#FBBF24" font-size="7" opacity="0.7">parse AST</text>
+
+  <!-- analyzer → chunker -->
+  <path d="M420 400 Q 320 430 340 445" fill="none" stroke="#F472B6" stroke-width="1.3" marker-end="url(#a-pink)" opacity="0.5"/>
+  <text x="350" y="428" fill="#F472B6" font-size="7" opacity="0.7">build manifest</text>
+
+  <!-- analyzer → analysis -->
+  <line x1="460" y1="400" x2="460" y2="445" stroke="#FB923C" stroke-width="1.6" marker-end="url(#a-orange)" opacity="0.7"/>
+  <text x="470" y="428" fill="#FB923C" font-size="7" opacity="0.7">multi-pass</text>
+
+  <!-- analyzer → risk -->
+  <path d="M520 400 Q 590 430 600 445" fill="none" stroke="#F87171" stroke-width="1.3" marker-end="url(#a-red)" opacity="0.5"/>
+  <text x="560" y="428" fill="#F87171" font-size="7" opacity="0.7">assess risk</text>
+
+  <!-- analyzer → lenses -->
+  <path d="M540 390 Q 680 430 740 445" fill="none" stroke="#22D3EE" stroke-width="1.3" marker-end="url(#a-cyan)" opacity="0.5"/>
+  <text x="640" y="426" fill="#22D3EE" font-size="7" opacity="0.7">build lenses</text>
+
+  <!-- analysis → claude_api (animated-style dashed) -->
+  <path d="M457 500 Q 410 540 375 580" fill="none" stroke="#FB923C" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#a-orange)" opacity="0.8"/>
+  <text x="390" y="546" fill="#FB923C" font-size="8" font-weight="600" opacity="0.9">LLM calls</text>
+
+  <!-- chat → claude_api -->
+  <path d="M800 395 Q 820 520 440 590" fill="none" stroke="#FB923C" stroke-width="1.3" stroke-dasharray="5 3" marker-end="url(#a-orange)" opacity="0.5"/>
+  <text x="710" y="520" fill="#FB923C" font-size="7" opacity="0.6">Q&A calls</text>
+
+  <!-- github_svc → github_api -->
+  <path d="M120 395 Q 120 500 120 580" fill="none" stroke="#34D399" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#a-green)" opacity="0.7"/>
+  <text x="128" y="500" fill="#34D399" font-size="7" opacity="0.7">REST</text>
+
+  <!-- analyzer → supabase -->
+  <path d="M500 400 Q 580 520 630 580" fill="none" stroke="#60A5FA" stroke-width="1.4" marker-end="url(#a-blue)" opacity="0.5"/>
+  <text x="560" y="510" fill="#60A5FA" font-size="7" opacity="0.7">store results</text>
+
+  <!-- auth → supabase -->
+  <path d="M120 285 Q 120 500 565 600" fill="none" stroke="#22D3EE" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#a-cyan)" opacity="0.35"/>
+  <text x="280" y="480" fill="#22D3EE" font-size="7" opacity="0.4">user data</text>
+
+  <!-- auth → resend -->
+  <path d="M120 285 Q 200 550 770 600" fill="none" stroke="#A78BFA" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#a-purple)" opacity="0.3"/>
+  <text x="400" y="560" fill="#A78BFA" font-size="7" opacity="0.4">OTP email</text>
+
+  <!-- ══════════ NODES ══════════ -->
+
+  <!-- User / Browser -->
+  <g>
+    <rect x="395" y="35" width="130" height="42" rx="10" fill="#111827" stroke="#34D399" stroke-width="1.5"/>
+    <text x="426" y="60" font-size="16">👤</text>
+    <text x="444" y="62" fill="#34D399" font-size="11" font-weight="700">User / Browser</text>
+  </g>
+
+  <!-- Next.js Frontend -->
+  <g>
+    <rect x="360" y="120" width="200" height="56" rx="12" fill="#111827" stroke="#60A5FA" stroke-width="1.5"/>
+    <text x="380" y="150" font-size="18">🖥️</text>
+    <text x="404" y="144" fill="#60A5FA" font-size="12" font-weight="700">Next.js Frontend</text>
+    <text x="404" y="162" fill="#94A3B8" font-size="8">React 19 · 6 Visualization Tabs</text>
+  </g>
+
+  <!-- API Routes Layer -->
+  <g>
+    <rect x="360" y="230" width="200" height="56" rx="12" fill="#111827" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="380" y="260" font-size="18">🔌</text>
+    <text x="404" y="254" fill="#A78BFA" font-size="12" font-weight="700">API Routes Layer</text>
+    <text x="404" y="272" fill="#94A3B8" font-size="8">28+ Endpoints · SSE Streaming</text>
+  </g>
+
+  <!-- Auth Service -->
+  <g>
+    <rect x="60" y="242" width="120" height="46" rx="10" fill="#111827" stroke="#22D3EE" stroke-width="1.3"/>
+    <text x="78" y="269" font-size="15">🔐</text>
+    <text x="97" y="270" fill="#22D3EE" font-size="10" font-weight="600">Auth Service</text>
+  </g>
+
+  <!-- Job Manager -->
+  <g>
+    <rect x="740" y="242" width="120" height="46" rx="10" fill="#111827" stroke="#FB923C" stroke-width="1.3"/>
+    <text x="758" y="269" font-size="15">📋</text>
+    <text x="778" y="270" fill="#FB923C" font-size="10" font-weight="600">Job Manager</text>
+  </g>
+
+  <!-- Analyzer (Orchestrator) -->
+  <g>
+    <rect x="360" y="350" width="200" height="50" rx="12" fill="rgba(129,140,248,0.1)" stroke="#818CF8" stroke-width="2"/>
+    <text x="380" y="378" font-size="18">🎯</text>
+    <text x="404" y="372" fill="#818CF8" font-size="12" font-weight="700">Analyzer</text>
+    <text x="404" y="388" fill="#94A3B8" font-size="8">Main Orchestrator · Pipeline Coordinator</text>
+  </g>
+
+  <!-- GitHub Service -->
+  <g>
+    <rect x="60" y="355" width="120" height="42" rx="10" fill="#111827" stroke="#34D399" stroke-width="1.3"/>
+    <text x="78" y="380" font-size="14">🐙</text>
+    <text x="96" y="381" fill="#34D399" font-size="10" font-weight="600">GitHub Service</text>
+  </g>
+
+  <!-- Parser Service -->
+  <g>
+    <rect x="60" y="450" width="130" height="50" rx="10" fill="#111827" stroke="#FBBF24" stroke-width="1.3"/>
+    <text x="80" y="474" font-size="14">🌳</text>
+    <text x="99" y="472" fill="#FBBF24" font-size="10" font-weight="600">Parser Service</text>
+    <text x="80" y="488" fill="#94A3B8" font-size="7.5">Tree-sitter AST · Dep Graph</text>
+  </g>
+
+  <!-- Chunker Service -->
+  <g>
+    <rect x="220" y="450" width="130" height="50" rx="10" fill="#111827" stroke="#F472B6" stroke-width="1.3"/>
+    <text x="240" y="474" font-size="14">📂</text>
+    <text x="258" y="472" fill="#F472B6" font-size="10" font-weight="600">Chunker Service</text>
+    <text x="240" y="488" fill="#94A3B8" font-size="7.5">File Manifest · Prioritization</text>
+  </g>
+
+  <!-- Analysis Engine -->
+  <g>
+    <rect x="378" y="450" width="155" height="50" rx="10" fill="rgba(251,146,60,0.08)" stroke="#FB923C" stroke-width="1.8"/>
+    <text x="398" y="474" font-size="14">🧠</text>
+    <text x="416" y="472" fill="#FB923C" font-size="10" font-weight="700">Analysis Engine</text>
+    <text x="398" y="488" fill="#94A3B8" font-size="7.5">4-Pass Claude AI · 80K tokens/pass</text>
+  </g>
+
+  <!-- Risk Engine -->
+  <g>
+    <rect x="564" y="450" width="130" height="50" rx="10" fill="#111827" stroke="#F87171" stroke-width="1.3"/>
+    <text x="584" y="474" font-size="14">⚠️</text>
+    <text x="602" y="472" fill="#F87171" font-size="10" font-weight="600">Risk Engine</text>
+    <text x="584" y="488" fill="#94A3B8" font-size="7.5">44 Tech Sigs · Complexity Score</text>
+  </g>
+
+  <!-- Business Lenses -->
+  <g>
+    <rect x="724" y="450" width="140" height="50" rx="10" fill="#111827" stroke="#22D3EE" stroke-width="1.3"/>
+    <text x="744" y="474" font-size="14">🔍</text>
+    <text x="762" y="472" fill="#22D3EE" font-size="10" font-weight="600">Business Lenses</text>
+    <text x="744" y="488" fill="#94A3B8" font-size="7.5">Capabilities · Journeys · Quality</text>
+  </g>
+
+  <!-- Chat Service -->
+  <g>
+    <rect x="740" y="355" width="120" height="42" rx="10" fill="#111827" stroke="#F472B6" stroke-width="1.3"/>
+    <text x="758" y="380" font-size="14">💬</text>
+    <text x="777" y="381" fill="#F472B6" font-size="10" font-weight="600">Chat Service</text>
+  </g>
+
+  <!-- Claude API -->
+  <g>
+    <rect x="310" y="585" width="140" height="50" rx="10" fill="rgba(251,146,60,0.08)" stroke="#FB923C" stroke-width="1.8"/>
+    <text x="332" y="612" font-size="16">🤖</text>
+    <text x="354" y="608" fill="#FB923C" font-size="11" font-weight="700">Claude API</text>
+    <text x="332" y="624" fill="#94A3B8" font-size="7.5">Anthropic Sonnet · Multi-Pass</text>
+  </g>
+
+  <!-- GitHub API -->
+  <g>
+    <rect x="60" y="585" width="140" height="50" rx="10" fill="#111827" stroke="#34D399" stroke-width="1.3"/>
+    <text x="82" y="612" font-size="16">🐙</text>
+    <text x="104" y="608" fill="#34D399" font-size="11" font-weight="700">GitHub API</text>
+    <text x="82" y="624" fill="#94A3B8" font-size="7.5">REST v3 · Clone · Metadata</text>
+  </g>
+
+  <!-- Supabase -->
+  <g>
+    <rect x="555" y="585" width="140" height="50" rx="10" fill="#111827" stroke="#60A5FA" stroke-width="1.3"/>
+    <text x="577" y="612" font-size="16">🗄️</text>
+    <text x="599" y="608" fill="#60A5FA" font-size="11" font-weight="700">Supabase</text>
+    <text x="577" y="624" fill="#94A3B8" font-size="7.5">PostgreSQL · File Storage</text>
+  </g>
+
+  <!-- Resend -->
+  <g>
+    <rect x="770" y="585" width="120" height="50" rx="10" fill="#111827" stroke="#A78BFA" stroke-width="1.3"/>
+    <text x="790" y="612" font-size="16">📧</text>
+    <text x="810" y="608" fill="#A78BFA" font-size="11" font-weight="600">Resend Email</text>
+    <text x="790" y="624" fill="#94A3B8" font-size="7.5">OTP · Notifications</text>
+  </g>
+
+</svg>
+</div>
+
+<!-- ═══════════ LEGEND ═══════════ -->
+<div class="legend">
+  <div class="legend-group"><div class="legend-swatch" style="background:rgba(52,211,153,0.15);border-color:rgba(52,211,153,0.3)"></div><span class="legend-label">Client Layer</span></div>
+  <div class="legend-group"><div class="legend-swatch" style="background:rgba(167,139,250,0.15);border-color:rgba(167,139,250,0.3)"></div><span class="legend-label">Server / API Layer</span></div>
+  <div class="legend-group"><div class="legend-swatch" style="background:rgba(129,140,248,0.15);border-color:rgba(129,140,248,0.3)"></div><span class="legend-label">Core Analysis Engine</span></div>
+  <div class="legend-group"><div class="legend-swatch" style="background:rgba(251,146,60,0.15);border-color:rgba(251,146,60,0.3)"></div><span class="legend-label">External Services</span></div>
+  <div style="flex:1"></div>
+  <div class="legend-group"><svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#94A3B8" stroke-width="1.5"/></svg><span class="legend-label">Data Flow</span></div>
+  <div class="legend-group"><svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3"/></svg><span class="legend-label">External API Call</span></div>
+</div>
+
+<!-- ═══════════ DATA PROCESSING PIPELINE ═══════════ -->
+<div class="section-title" style="margin-top:12px;">Data Processing Pipeline</div>
+<div class="pipeline-wrap">
+  <div class="pipeline">
+    <!-- Step 1 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(52,211,153,0.12);border-color:#34D399;">
+        <span class="step-num" style="color:#34D399;border:1.5px solid #34D399;">1</span>
+        🐙
+      </div>
+      <h4 style="color:#34D399;">Repo Acquisition</h4>
+      <p>Clone / tarball download + GitHub metadata</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 2 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(244,114,182,0.12);border-color:#F472B6;">
+        <span class="step-num" style="color:#F472B6;border:1.5px solid #F472B6;">2</span>
+        📂
+      </div>
+      <h4 style="color:#F472B6;">File Manifest</h4>
+      <p>Categorize, score, select top 400 files</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 3 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(251,191,36,0.12);border-color:#FBBF24;">
+        <span class="step-num" style="color:#FBBF24;border:1.5px solid #FBBF24;">3</span>
+        🌳
+      </div>
+      <h4 style="color:#FBBF24;">AST Parsing</h4>
+      <p>Tree-sitter analysis + dependency graph</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 4 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(167,139,250,0.12);border-color:#A78BFA;">
+        <span class="step-num" style="color:#A78BFA;border:1.5px solid #A78BFA;">4</span>
+        📄
+      </div>
+      <h4 style="color:#A78BFA;">Doc Parsing</h4>
+      <p>PDF, markdown, images from Supabase</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 5 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(251,146,60,0.12);border-color:#FB923C;">
+        <span class="step-num" style="color:#FB923C;border:1.5px solid #FB923C;">5</span>
+        🧠
+      </div>
+      <h4 style="color:#FB923C;">AI Analysis</h4>
+      <p>4-pass Claude pipeline (80K tok/pass)</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 6 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(248,113,113,0.12);border-color:#F87171;">
+        <span class="step-num" style="color:#F87171;border:1.5px solid #F87171;">6</span>
+        ⚠️
+      </div>
+      <h4 style="color:#F87171;">Risk Assessment</h4>
+      <p>44 tech sigs + static checks + AI risks</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 7 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(34,211,238,0.12);border-color:#22D3EE;">
+        <span class="step-num" style="color:#22D3EE;border:1.5px solid #22D3EE;">7</span>
+        🔍
+      </div>
+      <h4 style="color:#22D3EE;">Business Lenses</h4>
+      <p>Capabilities, journeys, quality reports</p>
+      <div class="pipe-arrow"><svg viewBox="0 0 20 12"><path d="M0 6H16L12 2M16 6L12 10" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/></svg></div>
+    </div>
+    <!-- Step 8 -->
+    <div class="pipe-step">
+      <div class="pipe-circle" style="background:rgba(96,165,250,0.12);border-color:#60A5FA;">
+        <span class="step-num" style="color:#60A5FA;border:1.5px solid #60A5FA;">8</span>
+        💾
+      </div>
+      <h4 style="color:#60A5FA;">Storage & Views</h4>
+      <p>6 UI views compiled, stored in Supabase</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ AI MULTI-PASS ANALYSIS ═══════════ -->
+<div class="section-title">AI Multi-Pass Analysis Engine</div>
+<div class="passes">
+  <!-- Pass 1 -->
+  <div class="pass-card" style="background:rgba(52,211,153,0.06);border-color:rgba(52,211,153,0.25);">
+    <span class="bg-num" style="color:#34D399;">1</span>
+    <div class="pass-header">
+      <span class="pass-icon">📦</span>
+      <div>
+        <div class="pass-tag" style="color:#34D399;">Pass 1</div>
+        <div class="pass-title">Module Summaries</div>
+      </div>
+    </div>
+    <div class="pass-desc">Analyzes top 15 modules by dependency degree. Produces per-module business function, key technologies, and estimated lines of code.</div>
+    <div class="pass-io">
+      <div class="io-row"><span class="io-label" style="color:#34D399;">Input</span><span class="io-value">Top modules + source files</span></div>
+      <div class="io-row"><span class="io-label" style="color:#34D399;">Output</span><span class="io-value">Business function per module</span></div>
+    </div>
+  </div>
+  <!-- Pass 2 -->
+  <div class="pass-card" style="background:rgba(96,165,250,0.06);border-color:rgba(96,165,250,0.25);">
+    <span class="bg-num" style="color:#60A5FA;">2</span>
+    <div class="pass-header">
+      <span class="pass-icon">🏗️</span>
+      <div>
+        <div class="pass-tag" style="color:#60A5FA;">Pass 2</div>
+        <div class="pass-title">Architecture Graph</div>
+      </div>
+    </div>
+    <div class="pass-desc">Generates 5-12 business-friendly architecture nodes with typed edges and 3-6 data flow steps for non-technical readers.</div>
+    <div class="pass-io">
+      <div class="io-row"><span class="io-label" style="color:#60A5FA;">Input</span><span class="io-value">Module summaries + dep graph</span></div>
+      <div class="io-row"><span class="io-label" style="color:#60A5FA;">Output</span><span class="io-value">Nodes, edges, data flow</span></div>
+    </div>
+  </div>
+  <!-- Pass 3 -->
+  <div class="pass-card" style="background:rgba(167,139,250,0.06);border-color:rgba(167,139,250,0.25);">
+    <span class="bg-num" style="color:#A78BFA;">3</span>
+    <div class="pass-header">
+      <span class="pass-icon">💼</span>
+      <div>
+        <div class="pass-tag" style="color:#A78BFA;">Pass 3</div>
+        <div class="pass-title">Business Context</div>
+      </div>
+    </div>
+    <div class="pass-desc">Maps architecture to business outcomes: user journeys, value features, data usage patterns, and external dependencies.</div>
+    <div class="pass-io">
+      <div class="io-row"><span class="io-label" style="color:#A78BFA;">Input</span><span class="io-value">Architecture + requirements docs</span></div>
+      <div class="io-row"><span class="io-label" style="color:#A78BFA;">Output</span><span class="io-value">Journeys, features, data usage</span></div>
+    </div>
+  </div>
+  <!-- Pass 4 -->
+  <div class="pass-card" style="background:rgba(251,146,60,0.06);border-color:rgba(251,146,60,0.25);">
+    <span class="bg-num" style="color:#FB923C;">4</span>
+    <div class="pass-header">
+      <span class="pass-icon">🚀</span>
+      <div>
+        <div class="pass-tag" style="color:#FB923C;">Pass 4</div>
+        <div class="pass-title">Founder Narrative</div>
+      </div>
+    </div>
+    <div class="pass-desc">Translates all outputs into compelling narratives with plain-English analogies, strategic insights, and competitive positioning.</div>
+    <div class="pass-io">
+      <div class="io-row"><span class="io-label" style="color:#FB923C;">Input</span><span class="io-value">All prior passes + full context</span></div>
+      <div class="io-row"><span class="io-label" style="color:#FB923C;">Output</span><span class="io-value">Founder & tech narratives</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<div class="footer">
+  CodeVision System Architecture &nbsp;·&nbsp; Built with Next.js 16, Claude AI (Anthropic), Tree-sitter, Supabase &nbsp;·&nbsp; MBAi 448 Final Project
+</div>
+
+</body>
+</html>
