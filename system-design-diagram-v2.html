@@ -45,9 +45,37 @@ body {
 }
 
 @media print {
-  body { padding: 18px 22px; }
-  @page { size: landscape; margin: 10mm; }
+  body { padding: 10px 14px; }
+  @page { size: landscape; margin: 7mm; }
   .no-print { display: none !important; }
+
+  /* ── Keep header glued to the diagram ── */
+  .doc-header { margin-bottom: 12px; padding-bottom: 10px; page-break-after: avoid; }
+
+  /* ── Section headings stay with what follows ── */
+  .section-heading { margin: 10px 0 6px; page-break-after: avoid; }
+
+  /* ── KEY FIX: limit SVG height so it fits on page 1 with the header ── */
+  /* At landscape width the viewBox ratio makes the SVG ~full-page-tall — cap it. */
+  .diagram-card { padding: 4px; margin-bottom: 8px; page-break-inside: avoid; }
+  .diagram-card svg { height: 295px !important; width: 100% !important; }
+
+  .caption { font-size: 9px; margin-top: 4px; margin-bottom: 10px; }
+
+  /* ── Pipeline: compact for page 2 ── */
+  .pipeline-card { padding: 12px 16px 10px; margin-bottom: 12px; }
+  .pipe-icon-wrap { width: 38px; height: 38px; }
+  .pipe-step h4 { font-size: 9.5px; }
+  .pipe-step p  { font-size: 8px; }
+
+  /* ── AI passes grid ── */
+  .passes-grid { gap: 8px; margin-bottom: 12px; }
+  .pass-box { padding: 10px 10px; }
+  .pass-box .p-body { font-size: 9px; }
+
+  /* ── Legend / footer ── */
+  .legend-row { padding: 8px 0; }
+  .doc-footer { padding-top: 10px; font-size: 9px; }
 }
 
 /* ─── HEADER ─── */
