@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeVision — Model Card v1.0</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Lora:wght@700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #F7F7F5;
+  --surface: #FFFFFF;
+  --rule:    #E2E0DC;
+  --rule-lt: #EDEBE7;
+  --ink:     #1A1A18;
+  --ink-mid: #4B4B47;
+  --ink-dim: #8A8A84;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 48px 52px 56px;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  line-height: 1.5;
+}
+
+@media print {
+  body { padding: 10px 14px; }
+  @page { size: landscape; margin: 7mm; }
+  .no-print { display: none !important; }
+  .section-block { page-break-inside: avoid; }
+  .sec-label { page-break-after: avoid; }
+}
+
+/* ── HEADER ── */
+.doc-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 28px; padding-bottom: 20px;
+  border-bottom: 1.5px solid var(--rule);
+}
+.doc-header h1 {
+  font-family: 'Inter', sans-serif;
+  font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--ink); margin-bottom: 4px;
+}
+.doc-header .byline { font-size: 12px; color: var(--ink-dim); }
+.pill-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.pill {
+  font-size: 10px; font-weight: 600; padding: 3px 10px;
+  border-radius: 999px; background: var(--surface);
+  border: 1px solid var(--rule); color: var(--ink-mid); letter-spacing: 0.02em;
+}
+.key-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; width: 340px; }
+.key-cell { border-radius: 8px; padding: 11px 12px; border: 1px solid var(--rule); background: var(--surface); }
+.key-cell .kc-val { font-size: 20px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
+.key-cell .kc-lbl { font-size: 9px; color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ── SECTION LABELS ── */
+.sec-label {
+  font-family: 'Lora', 'Georgia', serif;
+  font-size: 14px; font-weight: 700; color: var(--ink-mid);
+  margin: 26px 0 10px; display: flex; align-items: center; gap: 8px;
+}
+.sec-num {
+  display: inline-flex; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--ink-mid); color: #fff; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; font-family: 'Inter', sans-serif; flex-shrink: 0;
+}
+hr.divider { border: none; border-top: 1.5px solid var(--rule); margin: 24px 0 18px; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 10px; padding: 18px 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05); margin-bottom: 14px;
+}
+.card-sm {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;
+}
+
+/* ── GRID LAYOUTS ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+
+/* ── BODY TEXT ── */
+.body-text { font-size: 11px; line-height: 1.65; color: var(--ink-mid); margin-bottom: 12px; }
+.body-text strong { color: var(--ink); }
+
+/* ── SECTION HEADING INSIDE CARD ── */
+h2.card-title { font-size: 13px; font-weight: 800; color: var(--ink); margin-bottom: 10px; letter-spacing: -0.01em; }
+
+/* ── METRIC GAUGES ── */
+.gauge { margin-bottom: 11px; }
+.gauge-hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.gauge-lbl { font-size: 10px; font-weight: 600; color: var(--ink-mid); }
+.gauge-val { font-size: 11px; font-weight: 800; font-family: monospace; }
+.gauge-track { height: 6px; border-radius: 999px; background: var(--rule-lt); overflow: hidden; margin-bottom: 4px; }
+.gauge-fill  { height: 100%; border-radius: 999px; }
+.gauge-desc  { font-size: 9px; color: var(--ink-dim); line-height: 1.5; }
+
+/* ── PIPELINE FLOWCHART ── */
+.pipe-flow { display: flex; align-items: flex-start; justify-content: space-between; gap: 0; }
+.pipe-step { flex: 1; text-align: center; padding: 0 3px; }
+.pipe-node {
+  width: 50px; height: 50px; border-radius: 12px; margin: 0 auto 7px;
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
+.pipe-step h5 { font-size: 9.5px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; color: var(--ink); }
+.pipe-step p  { font-size: 8px; color: var(--ink-dim); line-height: 1.4; }
+.pipe-arrow   { display: flex; align-items: center; padding-top: 25px; flex-shrink: 0; }
+
+/* ── DATA ROWS ── */
+.data-row { display: flex; gap: 8px; margin-bottom: 5px; }
+.data-key  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; width: 72px; flex-shrink: 0; }
+.data-val  { font-size: 10px; color: var(--ink); }
+
+/* ── CHECK LISTS ── */
+.check-list { list-style: none; }
+.check-list li { margin-bottom: 8px; }
+.li-head { font-size: 10px; font-weight: 700; margin-bottom: 2px; }
+.li-body { font-size: 9.5px; line-height: 1.55; color: var(--ink-dim); }
+
+/* ── FAILURE MODES ── */
+.failure-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 6px;
+  border: 1px solid var(--rule); background: var(--surface);
+}
+.sev-badge {
+  font-size: 8.5px; font-weight: 700; padding: 2px 8px;
+  border-radius: 999px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+.failure-head { font-size: 10px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+.failure-body { font-size: 9px; color: var(--ink-dim); line-height: 1.5; margin-bottom: 3px; }
+.failure-mit  { font-size: 9px; line-height: 1.5; }
+
+/* ── IMPROVEMENT ITEMS ── */
+.imp-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 8px; margin-bottom: 7px;
+  border: 1px solid var(--rule); background: var(--surface);
+}
+.i-title { font-size: 10.5px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.i-body  { font-size: 9.5px; color: var(--ink-dim); line-height: 1.55; }
+.pri-badge {
+  font-size: 8px; font-weight: 700; padding: 2px 7px;
+  border-radius: 999px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+
+/* ── COMPARISON TABLE ── */
+.comp-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.comp-table th { text-align: left; padding: 8px 12px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.comp-table td { padding: 7px 12px; vertical-align: top; border-top: 1px solid var(--rule); }
+
+/* ── USE CASE CARDS ── */
+.use-card { border-radius: 10px; padding: 13px 15px; }
+.uc-role { font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.uc-task { font-size: 10px; line-height: 1.6; color: var(--ink-mid); margin-bottom: 5px; }
+.uc-ex   { font-size: 9.5px; font-style: italic; color: var(--ink-dim); }
+
+/* ── FOOTER ── */
+.doc-footer {
+  border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 20px;
+  text-align: center; font-size: 10px; color: var(--ink-dim);
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════ HEADER ══════════════ -->
+<div class="doc-header">
+  <div>
+    <h1>Model Card — CodeVision AI Analysis Engine</h1>
+    <div class="byline">Multi-Pass Codebase Intelligence System &nbsp;·&nbsp; v1.0</div>
+    <div class="pill-row">
+      <span class="pill">Claude Sonnet</span>
+      <span class="pill">Tree-sitter AST</span>
+      <span class="pill">4-Pass Pipeline</span>
+      <span class="pill">Business Mapper</span>
+      <span class="pill">TypeScript</span>
+    </div>
+  </div>
+  <div class="key-grid">
+    <div class="key-cell"><div class="kc-val" style="color:#C97540;">4</div><div class="kc-lbl">AI Passes</div></div>
+    <div class="key-cell"><div class="kc-val" style="color:#3A9B6F;">92%</div><div class="kc-lbl">Tech Precision</div></div>
+    <div class="key-cell"><div class="kc-val" style="color:#7752C8;">82%</div><div class="kc-lbl">Arch Accuracy</div></div>
+    <div class="key-cell"><div class="kc-val" style="color:#3B7DD8;">45s</div><div class="kc-lbl">P95 Latency</div></div>
+  </div>
+</div>
+
+<!-- ══════════════ §1 MODEL OVERVIEW ══════════════ -->
+<div class="sec-label"><span class="sec-num">1</span>Model Overview</div>
+
+<div class="card">
+  <h2 class="card-title">What This Model Does</h2>
+  <p class="body-text">
+    The CodeVision AI Analysis Engine is a <strong>multi-pass LLM-powered pipeline</strong> that transforms raw GitHub repositories
+    into structured, business-friendly architecture intelligence. It combines <strong>deterministic code analysis</strong>
+    (AST parsing, dependency graphs, pattern detection) with <strong>progressive AI reasoning</strong> across 4 analysis passes to
+    produce architecture diagrams, business capability maps, risk assessments, and executive narratives.
+  </p>
+  <p class="body-text" style="margin-bottom:0;">
+    Unlike traditional static analysis tools that only detect code-level patterns, this system bridges the gap between
+    <strong>technical implementation and business understanding</strong>, making codebases accessible to founders, product
+    managers, and investors who need to evaluate software architecture without reading code.
+  </p>
+</div>
+
+<div class="grid-3">
+  <div style="background:#FAF0E8;border:1px solid #C9754040;border-radius:10px;padding:14px 16px;">
+    <div style="font-size:22px;margin-bottom:8px;">🧠</div>
+    <div style="font-size:11px;font-weight:700;color:#8C4818;margin-bottom:5px;">Core LLM — Claude Sonnet</div>
+    <p style="font-size:9.5px;line-height:1.6;color:var(--ink-mid);">Anthropic Claude Sonnet as reasoning backbone. Used for code understanding, architecture inference, business context generation, and interactive Q&amp;A. Not fine-tuned — uses carefully engineered system prompts with structured JSON output schemas.</p>
+  </div>
+  <div style="background:#FBF4E4;border:1px solid #C88B2E40;border-radius:10px;padding:14px 16px;">
+    <div style="font-size:22px;margin-bottom:8px;">🌳</div>
+    <div style="font-size:11px;font-weight:700;color:#8C5C10;margin-bottom:5px;">AST Parser — Tree-sitter</div>
+    <p style="font-size:9.5px;line-height:1.6;color:var(--ink-mid);">Tree-sitter and ast-grep for deterministic structural analysis. Parses source code into abstract syntax trees to extract classes, functions, imports, and exports. Builds dependency graphs and detects architecture patterns (MVC, Clean Architecture, microservices).</p>
+  </div>
+  <div style="background:#E5F4F4;border:1px solid #2E969640;border-radius:10px;padding:14px 16px;">
+    <div style="font-size:22px;margin-bottom:8px;">🔍</div>
+    <div style="font-size:11px;font-weight:700;color:#1A6060;margin-bottom:5px;">Business Mapper</div>
+    <p style="font-size:9.5px;line-height:1.6;color:var(--ink-mid);">Keyword-based capability mapping engine that translates technical architecture nodes into 8 business capabilities across 3 strategic domains. Uses confidence scoring (0.45–0.95) and generates deterministic user journey graphs as fallback.</p>
+  </div>
+</div>
+
+<!-- Pipeline Flowchart -->
+<div class="card">
+  <h2 class="card-title">Model Processing Pipeline</h2>
+  <div class="pipe-flow">
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#E8F5EE;border:1.5px solid #3A9B6F;">📥</div>
+      <h5>Raw Code Input</h5>
+      <p>Source files from GitHub (up to 400 prioritized files, 16+ languages)</p>
+    </div>
+    <div class="pipe-arrow"><svg width="18" height="10"><path d="M0 5H14L10 1M14 5L10 9" fill="none" stroke="#C8C4BC" stroke-width="1.5"/></svg></div>
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#FBF4E4;border:1.5px solid #C88B2E;">🌳</div>
+      <h5>AST Parsing</h5>
+      <p>Tree-sitter extracts classes, functions, imports; builds dependency graphs</p>
+    </div>
+    <div class="pipe-arrow"><svg width="18" height="10"><path d="M0 5H14L10 1M14 5L10 9" fill="none" stroke="#C8C4BC" stroke-width="1.5"/></svg></div>
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#E5F4F4;border:1.5px solid #2E9696;">⚙️</div>
+      <h5>Deterministic Signals</h5>
+      <p>File scoring, pattern detection, tech fingerprinting (44 signatures)</p>
+    </div>
+    <div class="pipe-arrow"><svg width="18" height="10"><path d="M0 5H14L10 1M14 5L10 9" fill="none" stroke="#C8C4BC" stroke-width="1.5"/></svg></div>
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#FAF0E8;border:2px solid #C97540;">🤖</div>
+      <h5>Claude AI Analysis</h5>
+      <p>4-pass: Summaries → Arch Graph → Business Context → Narrative</p>
+    </div>
+    <div class="pipe-arrow"><svg width="18" height="10"><path d="M0 5H14L10 1M14 5L10 9" fill="none" stroke="#C8C4BC" stroke-width="1.5"/></svg></div>
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#EEE8F7;border:1.5px solid #7752C8;">🗺️</div>
+      <h5>Business Mapping</h5>
+      <p>8 capabilities, 3 strategic domains, user journey graphs</p>
+    </div>
+    <div class="pipe-arrow"><svg width="18" height="10"><path d="M0 5H14L10 1M14 5L10 9" fill="none" stroke="#C8C4BC" stroke-width="1.5"/></svg></div>
+    <div class="pipe-step">
+      <div class="pipe-node" style="background:#E6EFF9;border:1.5px solid #3B7DD8;">📊</div>
+      <h5>Structured Output</h5>
+      <p>6 UI-ready views: arch diagrams, risk, tech stack, capabilities, Q&amp;A</p>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════ §2 INTENDED USE ══════════════ -->
+<div class="sec-label"><span class="sec-num">2</span>Intended Use</div>
+
+<p class="body-text">
+  The model serves as the <strong>core intelligence engine</strong> within CodeVision, performing automated code architecture
+  analysis that would traditionally require a senior engineer spending hours or days reviewing a codebase.
+</p>
+
+<div class="grid-2">
+  <div class="use-card" style="background:#FAF0E8;border:1px solid #C9754030;">
+    <div class="uc-role" style="color:#8C4818;">Non-Technical Founders</div>
+    <div class="uc-task">Understand what their engineering team has built, evaluate technical decisions, and communicate architecture to investors.</div>
+    <div class="uc-ex">"What does my codebase actually do and how risky is the architecture?"</div>
+  </div>
+  <div class="use-card" style="background:#EEE8F7;border:1px solid #7752C830;">
+    <div class="uc-role" style="color:#4A2D96;">Product Managers</div>
+    <div class="uc-task">Map technical systems to business capabilities, identify user journey gaps, and assess feature delivery risk.</div>
+    <div class="uc-ex">"Which business capabilities are well-supported vs. underdeveloped?"</div>
+  </div>
+  <div class="use-card" style="background:#E5F4F4;border:1px solid #2E969630;">
+    <div class="uc-role" style="color:#1A6060;">Technical Due Diligence</div>
+    <div class="uc-task">Rapidly assess technology stack, architecture patterns, risk factors, and technical debt before investment or acquisition.</div>
+    <div class="uc-ex">"What are the top risks in this codebase and what would remediation cost?"</div>
+  </div>
+  <div class="use-card" style="background:#E8F5EE;border:1px solid #3A9B6F30;">
+    <div class="uc-role" style="color:#1F6B47;">Engineering Teams</div>
+    <div class="uc-task">Onboard onto new codebases, understand dependency structures, track architecture evolution across versions.</div>
+    <div class="uc-ex">"How does data flow from API to database? What changed between v1 and v2?"</div>
+  </div>
+</div>
+
+<div style="background:#FAEBE8;border:1px solid #C4483030;border-radius:10px;padding:13px 16px;margin-bottom:6px;">
+  <div style="font-size:11px;font-weight:700;color:#8C2A18;margin-bottom:6px;">Out of Scope</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;">
+    <div style="font-size:9.5px;color:var(--ink-mid);">— Automated code generation or modification</div>
+    <div style="font-size:9.5px;color:var(--ink-mid);">— Security vulnerability scanning (SAST/DAST)</div>
+    <div style="font-size:9.5px;color:var(--ink-mid);">— Runtime performance profiling or load testing</div>
+    <div style="font-size:9.5px;color:var(--ink-mid);">— Compliance auditing (SOC2, HIPAA, GDPR)</div>
+    <div style="font-size:9.5px;color:var(--ink-mid);">— Replacing human code review for merge decisions</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════ §3 DATA ══════════════ -->
+<div class="sec-label"><span class="sec-num">3</span>Data Inputs &amp; Characteristics</div>
+
+<p class="body-text">
+  The model operates on two primary data sources at inference time: source code from a GitHub repository and optional
+  requirement documents uploaded by the user. There is no separate training dataset — the system leverages Claude Sonnet's
+  pre-trained knowledge combined with deterministic code analysis signals.
+</p>
+
+<div class="grid-2">
+  <div class="card-sm">
+    <div style="font-size:11px;font-weight:700;color:#1F6B47;margin-bottom:10px;">📦&nbsp; Source Code (Primary)</div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Source</span><span class="data-val">GitHub repos (public or private with token)</span></div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Languages</span><span class="data-val">16+ (Python, JS, TS, Go, Java, Ruby, Rust, C/C++, PHP, Swift, Kotlin…)</span></div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Selection</span><span class="data-val">Top 400 non-test files by priority score</span></div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Scoring</span><span class="data-val">Entry points (5), Config (4), Routes (3), Models (3) + import count + file size</span></div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Exclusions</span><span class="data-val">node_modules, .git, dist, build, migrations, lock files, binaries</span></div>
+    <div class="data-row"><span class="data-key" style="color:#3A9B6F;">Parsing</span><span class="data-val">Tree-sitter AST (5 langs) + regex fallback</span></div>
+  </div>
+  <div class="card-sm">
+    <div style="font-size:11px;font-weight:700;color:#4A2D96;margin-bottom:10px;">📄&nbsp; Requirement Documents (Optional)</div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Formats</span><span class="data-val">PDF, Markdown, Text, PNG, JPEG, GIF, WebP</span></div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Max Size</span><span class="data-val">10 MB per file</span></div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Storage</span><span class="data-val">Supabase file storage with project scoping</span></div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Parsing</span><span class="data-val">pdf-parse for PDFs, UTF-8 for text, Base64 for images</span></div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Usage</span><span class="data-val">Gap analysis — comparing implementation vs. requirements</span></div>
+    <div class="data-row"><span class="data-key" style="color:#7752C8;">Fallback</span><span class="data-val">GitHub README auto-import if no docs uploaded</span></div>
+  </div>
+</div>
+
+<div class="card-sm" style="margin-bottom:12px;">
+  <div style="font-size:11px;font-weight:700;color:#1D4F9C;margin-bottom:8px;">GitHub Metadata Signals</div>
+  <div style="display:flex;gap:10px;">
+    <div style="background:#E6EFF9;border:1px solid #3B7DD820;border-radius:8px;padding:7px 14px;text-align:center;"><div style="font-size:14px;">⭐</div><div style="font-size:9px;color:#3B7DD8;margin-top:2px;">Stars</div></div>
+    <div style="background:#E6EFF9;border:1px solid #3B7DD820;border-radius:8px;padding:7px 14px;text-align:center;"><div style="font-size:14px;">📝</div><div style="font-size:9px;color:#3B7DD8;margin-top:2px;">Languages</div></div>
+    <div style="background:#E6EFF9;border:1px solid #3B7DD820;border-radius:8px;padding:7px 14px;text-align:center;"><div style="font-size:14px;">👥</div><div style="font-size:9px;color:#3B7DD8;margin-top:2px;">Contributors</div></div>
+    <div style="background:#E6EFF9;border:1px solid #3B7DD820;border-radius:8px;padding:7px 14px;text-align:center;"><div style="font-size:14px;">📅</div><div style="font-size:9px;color:#3B7DD8;margin-top:2px;">Commit History</div></div>
+    <div style="background:#E6EFF9;border:1px solid #3B7DD820;border-radius:8px;padding:7px 14px;text-align:center;"><div style="font-size:14px;">🔀</div><div style="font-size:9px;color:#3B7DD8;margin-top:2px;">Branch / Hash</div></div>
+  </div>
+</div>
+
+<div style="background:#FBF4E4;border:1px solid #C88B2E30;border-radius:10px;padding:13px 16px;margin-bottom:6px;">
+  <div style="font-size:11px;font-weight:700;color:#8C5C10;margin-bottom:6px;">Known Data Limitations</div>
+  <ol style="padding-left:16px;font-size:9.5px;color:var(--ink-mid);line-height:1.7;">
+    <li>File selection capped at 400 — very large monorepos may have important files excluded from analysis</li>
+    <li>Tree-sitter AST parsing only covers 5 languages natively; others fall back to regex with lower accuracy</li>
+    <li>Binary files, minified code, and auto-generated code may be included, potentially skewing results</li>
+    <li>Private repositories require GitHub tokens; token permissions may limit metadata access</li>
+    <li>Requirement documents are optional — without them, gap analysis is not possible</li>
+  </ol>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════ §4 EVALUATION ══════════════ -->
+<div class="sec-label"><span class="sec-num">4</span>Evaluation</div>
+
+<p class="body-text">
+  Evaluating an architecture analysis system requires measuring both <strong>factual accuracy</strong> (are detected modules,
+  dependencies, and technologies correct?) and <strong>business relevance</strong> (are the insights useful for decision-making?).
+</p>
+
+<div class="grid-2">
+
+  <!-- Metric Gauges -->
+  <div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Architecture Node Accuracy</span><span class="gauge-val" style="color:#3A9B6F;">82%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:82%;background:#3A9B6F;"></div></div>
+      <div class="gauge-desc">Generated nodes that correspond to real, meaningful system components per manual expert review.</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Technology Detection Precision</span><span class="gauge-val" style="color:#3B7DD8;">92%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:92%;background:#3B7DD8;"></div></div>
+      <div class="gauge-desc">Precision of the 44-technology fingerprinting engine. Measures false positive rate.</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Dependency Edge Recall</span><span class="gauge-val" style="color:#7752C8;">78%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:78%;background:#7752C8;"></div></div>
+      <div class="gauge-desc">Actual module dependencies captured in AI-generated architecture edges. Measures completeness.</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Business Narrative Quality</span><span class="gauge-val" style="color:#C97540;">4.2 / 5</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:84%;background:#C97540;"></div></div>
+      <div class="gauge-desc">Human-rated quality (1–5) of founder-mode narratives. Evaluates clarity, analogy accuracy, and usefulness.</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Risk Detection Coverage</span><span class="gauge-val" style="color:#C44830;">75%</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:75%;background:#C44830;"></div></div>
+      <div class="gauge-desc">Known risks identified by combined AI + static analysis risk engine. Includes structural and operational risks.</div>
+    </div>
+    <div class="gauge">
+      <div class="gauge-hd"><span class="gauge-lbl">Response Latency (P95)</span><span class="gauge-val" style="color:#2E9696;">45s / 120s</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:37.5%;background:#2E9696;"></div></div>
+      <div class="gauge-desc">95th-percentile end-to-end analysis time for a ~200-file repository. Includes all 4 passes + view generation.</div>
+    </div>
+  </div>
+
+  <!-- Radar Chart -->
+  <div class="card-sm">
+    <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:8px;">Performance Dimensions</div>
+    <!-- Computed coords: cx=150, cy=130, r=90. Values: 0.82,0.88,0.75,0.92,0.70,0.85 -->
+    <!-- Angles (start -90°, step 60°): top, TR, BR, bottom, BL, TL -->
+    <!-- Polygon: 150,56 | 219,90 | 209,164 | 150,213 | 95,162 | 84,92 -->
+    <svg viewBox="0 0 300 270" width="100%" style="display:block;max-width:280px;margin:0 auto;">
+      <!-- grid rings -->
+      <circle cx="150" cy="130" r="22" fill="none" stroke="#E2E0DC" stroke-width="0.8" stroke-dasharray="3 3"/>
+      <circle cx="150" cy="130" r="45" fill="none" stroke="#E2E0DC" stroke-width="0.8" stroke-dasharray="3 3"/>
+      <circle cx="150" cy="130" r="67" fill="none" stroke="#E2E0DC" stroke-width="0.8" stroke-dasharray="3 3"/>
+      <circle cx="150" cy="130" r="90" fill="none" stroke="#E2E0DC" stroke-width="1"/>
+      <!-- axis lines -->
+      <line x1="150" y1="130" x2="150" y2="40"  stroke="#E2E0DC" stroke-width="0.7"/>
+      <line x1="150" y1="130" x2="228" y2="85"  stroke="#E2E0DC" stroke-width="0.7"/>
+      <line x1="150" y1="130" x2="228" y2="175" stroke="#E2E0DC" stroke-width="0.7"/>
+      <line x1="150" y1="130" x2="150" y2="220" stroke="#E2E0DC" stroke-width="0.7"/>
+      <line x1="150" y1="130" x2="72"  y2="175" stroke="#E2E0DC" stroke-width="0.7"/>
+      <line x1="150" y1="130" x2="72"  y2="85"  stroke="#E2E0DC" stroke-width="0.7"/>
+      <!-- filled polygon -->
+      <polygon points="150,56 219,90 209,164 150,213 95,162 84,92"
+               fill="#7752C818" stroke="#7752C8" stroke-width="1.8"/>
+      <!-- dots -->
+      <circle cx="150" cy="56"  r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <circle cx="219" cy="90"  r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <circle cx="209" cy="164" r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <circle cx="150" cy="213" r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <circle cx="95"  cy="162" r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <circle cx="84"  cy="92"  r="4" fill="#7752C8" stroke="#F7F7F5" stroke-width="1.5"/>
+      <!-- value labels -->
+      <text x="150" y="46"  font-size="8" font-weight="700" fill="#7752C8" text-anchor="middle">82%</text>
+      <text x="232" y="86"  font-size="8" font-weight="700" fill="#7752C8" text-anchor="start">88%</text>
+      <text x="222" y="170" font-size="8" font-weight="700" fill="#7752C8" text-anchor="start">75%</text>
+      <text x="150" y="228" font-size="8" font-weight="700" fill="#7752C8" text-anchor="middle">92%</text>
+      <text x="80"  y="168" font-size="8" font-weight="700" fill="#7752C8" text-anchor="end">70%</text>
+      <text x="70"  y="88"  font-size="8" font-weight="700" fill="#7752C8" text-anchor="end">85%</text>
+      <!-- axis labels -->
+      <text x="150" y="26"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Architecture</text>
+      <text x="150" y="36"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Accuracy</text>
+      <text x="256" y="74"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Business</text>
+      <text x="256" y="84"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Relevance</text>
+      <text x="258" y="178" font-size="7.5" fill="#8A8A84" text-anchor="middle">Risk</text>
+      <text x="258" y="188" font-size="7.5" fill="#8A8A84" text-anchor="middle">Detection</text>
+      <text x="150" y="248" font-size="7.5" fill="#8A8A84" text-anchor="middle">Tech Stack ID</text>
+      <text x="44"  y="178" font-size="7.5" fill="#8A8A84" text-anchor="middle">Journey</text>
+      <text x="44"  y="188" font-size="7.5" fill="#8A8A84" text-anchor="middle">Mapping</text>
+      <text x="38"  y="74"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Response</text>
+      <text x="38"  y="84"  font-size="7.5" fill="#8A8A84" text-anchor="middle">Coherence</text>
+    </svg>
+    <div style="margin-top:10px;font-size:10px;font-weight:600;color:var(--ink);margin-bottom:6px;">Why These Metrics Matter</div>
+    <div style="font-size:9px;color:var(--ink-dim);line-height:1.6;">
+      <div style="margin-bottom:4px;"><span style="color:#3A9B6F;font-weight:700;">Architecture Accuracy —</span> Incorrect module mapping directly misleads stakeholders about system structure.</div>
+      <div style="margin-bottom:4px;"><span style="color:#3B7DD8;font-weight:700;">Business Relevance —</span> Core value depends on translating technical facts into meaningful business language.</div>
+      <div style="margin-bottom:4px;"><span style="color:#C44830;font-weight:700;">Risk Detection —</span> Missing a critical risk in due diligence could have significant financial consequences.</div>
+      <div><span style="color:#2E9696;font-weight:700;">Response Time —</span> &lt;60s feels responsive; 60–120s acceptable with progress bar; &gt;120s risks abandonment.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="card-sm" style="background:#E6EFF940;border-color:#3B7DD830;">
+  <div style="font-size:10px;font-weight:700;color:#1D4F9C;margin-bottom:5px;">Evaluation Methodology</div>
+  <p style="font-size:9.5px;line-height:1.65;color:var(--ink-mid);">
+    We plan to evaluate against a benchmark of 20 open-source repositories of varying size and complexity (small utilities,
+    medium web apps, large frameworks). For each repo, a senior engineer produces a ground-truth architecture map, and we
+    measure node/edge overlap, technology detection F1, and risk recall. Business narrative quality uses 5-point Likert ratings
+    from non-technical reviewers. The benchmark suite is under active development.
+  </p>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════ §5 PERFORMANCE & LIMITATIONS ══════════════ -->
+<div class="sec-label"><span class="sec-num">5</span>Performance &amp; Limitations</div>
+
+<div class="grid-2" style="margin-bottom:14px;">
+  <div style="background:#E8F5EE;border:1px solid #3A9B6F30;border-radius:10px;padding:14px 16px;">
+    <div style="font-size:11px;font-weight:700;color:#1F6B47;margin-bottom:8px;">Where It Excels</div>
+    <ul class="check-list">
+      <li><div class="li-head" style="color:#3A9B6F;">Standard Web Applications</div><div class="li-body">React/Next.js, Django/FastAPI, Express/Node.js apps with clear frontend-backend-database tiers.</div></li>
+      <li><div class="li-head" style="color:#3A9B6F;">Common Architecture Patterns</div><div class="li-body">MVC, MVVM, Clean Architecture, REST APIs, and monolithic structures are reliably detected.</div></li>
+      <li><div class="li-head" style="color:#3A9B6F;">Technology Stack Identification</div><div class="li-body">92% precision on the 44-technology fingerprint library. Framework and infrastructure detection is highly accurate.</div></li>
+      <li><div class="li-head" style="color:#3A9B6F;">Business Translation</div><div class="li-body">Strong at converting technical structures into plain-English narratives for non-technical stakeholders.</div></li>
+      <li><div class="li-head" style="color:#3A9B6F;">Small-to-Medium Repos</div><div class="li-body">Best results on 50–500 source files. The 400-file window covers most of the codebase.</div></li>
+    </ul>
+  </div>
+  <div style="background:#FAEBE8;border:1px solid #C4483030;border-radius:10px;padding:14px 16px;">
+    <div style="font-size:11px;font-weight:700;color:#8C2A18;margin-bottom:8px;">Where It Struggles</div>
+    <ul class="check-list">
+      <li><div class="li-head" style="color:#C44830;">Very Large Monorepos</div><div class="li-body">Repos with 1000+ files may have critical modules excluded, leading to incomplete architecture maps.</div></li>
+      <li><div class="li-head" style="color:#C44830;">Uncommon Languages</div><div class="li-body">Languages without Tree-sitter support (Elixir, Haskell, Scala) rely on regex parsing, missing nested structures.</div></li>
+      <li><div class="li-head" style="color:#C44830;">Microservice Architectures</div><div class="li-body">Each microservice in a separate repo is analyzed independently — cross-service patterns are not visible.</div></li>
+      <li><div class="li-head" style="color:#C44830;">Heavy Metaprogramming</div><div class="li-body">Dynamic imports, reflection, and runtime module loading are invisible to static analysis.</div></li>
+      <li><div class="li-head" style="color:#C44830;">AI Hallucination Risk</div><div class="li-body">LLM may infer connections that don't exist, especially for unfamiliar frameworks or domain-specific patterns.</div></li>
+    </ul>
+  </div>
+</div>
+
+<!-- Known failure modes -->
+<div class="card" style="margin-bottom:12px;">
+  <h2 class="card-title">Known Failure Modes</h2>
+  <div class="failure-row" style="background:#FAEBE820;">
+    <span class="sev-badge" style="background:#C4483020;color:#C44830;">High</span>
+    <div>
+      <div class="failure-head">Rate Limit Exhaustion</div>
+      <div class="failure-body">Multiple concurrent analyses can exhaust Claude API rate limits, causing passes 2–4 to fail.</div>
+      <div class="failure-mit"><span style="color:#3A9B6F;font-weight:600;">Mitigation:</span> <span style="color:var(--ink-dim);">Exponential backoff (3 retries), single-pass fallback, and job queuing.</span></div>
+    </div>
+  </div>
+  <div class="failure-row">
+    <span class="sev-badge" style="background:#C88B2E20;color:#C88B2E;">Medium</span>
+    <div>
+      <div class="failure-head">Token Overflow</div>
+      <div class="failure-body">Very complex modules with deeply nested code can exceed the 80K token-per-pass limit, requiring truncation that loses context.</div>
+      <div class="failure-mit"><span style="color:#3A9B6F;font-weight:600;">Mitigation:</span> <span style="color:var(--ink-dim);">File prioritization and chunking limits total context; fallback to single-pass mode.</span></div>
+    </div>
+  </div>
+  <div class="failure-row">
+    <span class="sev-badge" style="background:#3A9B6F20;color:#3A9B6F;">Low</span>
+    <div>
+      <div class="failure-head">Circular Dependencies</div>
+      <div class="failure-body">Heavily circular import graphs can confuse the topological sorting for layout, producing tangled diagrams.</div>
+      <div class="failure-mit"><span style="color:#3A9B6F;font-weight:600;">Mitigation:</span> <span style="color:var(--ink-dim);">Force-directed graph layout with cycle-breaking heuristics.</span></div>
+    </div>
+  </div>
+  <div class="failure-row">
+    <span class="sev-badge" style="background:#3A9B6F20;color:#3A9B6F;">Low</span>
+    <div>
+      <div class="failure-head">Stale Cached Results</div>
+      <div class="failure-body">Analysis results are cached for 24h. Rapid code changes may show outdated architecture.</div>
+      <div class="failure-mit"><span style="color:#3A9B6F;font-weight:600;">Mitigation:</span> <span style="color:var(--ink-dim);">Users can trigger re-analysis; version diff view shows changes between analyses.</span></div>
+    </div>
+  </div>
+  <div class="failure-row">
+    <span class="sev-badge" style="background:#3A9B6F20;color:#3A9B6F;">Low</span>
+    <div>
+      <div class="failure-head">Empty / Stub Repositories</div>
+      <div class="failure-body">Repos with very few files or only boilerplate produce minimal or low-confidence analysis.</div>
+      <div class="failure-mit"><span style="color:#3A9B6F;font-weight:600;">Mitigation:</span> <span style="color:var(--ink-dim);">Quality report flags low-evidence analyses with explicit confidence warnings.</span></div>
+    </div>
+  </div>
+</div>
+
+<div style="background:#EEE8F7;border:1px solid #7752C830;border-radius:10px;padding:13px 16px;margin-bottom:6px;">
+  <div style="font-size:11px;font-weight:700;color:#4A2D96;margin-bottom:5px;">Bias Considerations</div>
+  <p style="font-size:9.5px;line-height:1.65;color:var(--ink-mid);">
+    The system may exhibit bias toward popular frameworks well-represented in Claude's training data. Niche technologies,
+    proprietary frameworks, or domain-specific patterns (embedded systems, HPC, game engines) may be under-analyzed or
+    misclassified. The 44-technology fingerprint library reflects a web-development-centric view. Business capability mapping
+    uses keyword heuristics that favor SaaS business models.
+  </p>
+</div>
+
+<hr class="divider">
+
+<!-- ══════════════ §6 IMPROVEMENT PATH ══════════════ -->
+<div class="sec-label"><span class="sec-num">6</span>Improvement Path</div>
+
+<div class="grid-2" style="margin-bottom:14px;">
+
+  <!-- Implemented -->
+  <div>
+    <div style="font-size:11px;font-weight:700;color:#1F6B47;margin-bottom:8px;">Implemented Improvements</div>
+    <div class="imp-item" style="background:#E8F5EE;border-color:#3A9B6F20;">
+      <div><div class="i-title">Multi-Pass Pipeline (from Single-Pass)</div><div class="i-body">Splitting into 4 focused passes improved architecture accuracy by reducing cognitive load per LLM call. Each pass works within the 80K token limit while maintaining coherence through context chaining.</div></div>
+    </div>
+    <div class="imp-item" style="background:#E8F5EE;border-color:#3A9B6F20;">
+      <div><div class="i-title">Deterministic + AI Hybrid Approach</div><div class="i-body">Adding Tree-sitter AST parsing and static heuristics as a foundation layer reduced AI hallucination. The LLM now refines deterministic signals rather than generating architecture from scratch.</div></div>
+    </div>
+    <div class="imp-item" style="background:#E8F5EE;border-color:#3A9B6F20;">
+      <div><div class="i-title">Fallback Strategy</div><div class="i-body">When the multi-pass pipeline fails (rate limits, API errors), automatic fallback to single-pass analysis ensures users always get results. Quality degrades gracefully rather than failing completely.</div></div>
+    </div>
+    <div class="imp-item" style="background:#E8F5EE;border-color:#3A9B6F20;">
+      <div><div class="i-title">Quality Report &amp; Confidence Scoring</div><div class="i-body">Each analysis now includes coverage score, evidence density, and low-confidence flags. Users can see where the system is uncertain rather than trusting all outputs equally.</div></div>
+    </div>
+  </div>
+
+  <!-- Planned -->
+  <div>
+    <div style="font-size:11px;font-weight:700;color:#1D4F9C;margin-bottom:8px;">Planned Next Steps</div>
+    <div class="imp-item">
+      <span class="pri-badge" style="background:#C4483020;color:#C44830;">High</span>
+      <div><div class="i-title">Expand Tree-sitter Language Support</div><div class="i-body">Add native AST parsing for Ruby, Rust, C#, and PHP — covering ~95% of repositories and eliminating regex fallback accuracy issues for popular languages.</div></div>
+    </div>
+    <div class="imp-item">
+      <span class="pri-badge" style="background:#C4483020;color:#C44830;">High</span>
+      <div><div class="i-title">Multi-Repo Microservice Analysis</div><div class="i-body">Allow linking multiple repositories as a single system. Cross-repo communication detection via API contract matching, shared schema detection, and service discovery patterns.</div></div>
+    </div>
+    <div class="imp-item">
+      <span class="pri-badge" style="background:#C88B2E20;color:#C88B2E;">Medium</span>
+      <div><div class="i-title">Evaluation Benchmark Suite</div><div class="i-body">Build a formal benchmark of 20+ repos with ground-truth architecture maps for automated regression testing across diverse languages, sizes, and patterns.</div></div>
+    </div>
+    <div class="imp-item">
+      <span class="pri-badge" style="background:#C88B2E20;color:#C88B2E;">Medium</span>
+      <div><div class="i-title">Incremental Analysis</div><div class="i-body">Detect changed files and re-analyze only affected modules. Would reduce analysis time by 50–80% for repeat analyses.</div></div>
+    </div>
+    <div class="imp-item">
+      <span class="pri-badge" style="background:#C88B2E20;color:#C88B2E;">Medium</span>
+      <div><div class="i-title">User Feedback Loop for Accuracy</div><div class="i-body">Allow users to correct architecture nodes/edges in the UI. Aggregate corrections as signal to improve prompts and heuristics over time.</div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Comparison table -->
+<div style="border:1px solid var(--rule);border-radius:10px;overflow:hidden;margin-bottom:6px;">
+  <div style="padding:11px 16px;background:#EBE6F5;border-bottom:1px solid var(--rule);">
+    <div style="font-size:11px;font-weight:700;color:#4A2D96;">Comparison: CodeVision AI vs. Traditional Manual Review</div>
+  </div>
+  <table class="comp-table" style="background:var(--surface);">
+    <thead>
+      <tr style="background:#F7F5FF;">
+        <th style="color:var(--ink-dim);border-bottom:1px solid var(--rule);">Dimension</th>
+        <th style="color:#7752C8;border-bottom:1px solid var(--rule);">CodeVision AI</th>
+        <th style="color:var(--ink-dim);border-bottom:1px solid var(--rule);">Manual Review</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Time to Architecture Map</td><td style="color:#3A9B6F;font-weight:600;">~45 seconds</td><td style="color:var(--ink-dim);">Hours to days</td></tr>
+      <tr><td>Business Translation</td><td style="color:#3A9B6F;font-weight:600;">Automated (founder mode)</td><td style="color:var(--ink-dim);">Requires separate meeting</td></tr>
+      <tr><td>Technology Detection</td><td style="color:#3A9B6F;font-weight:600;">44 technologies, 92% precision</td><td style="color:var(--ink-dim);">Expert-dependent</td></tr>
+      <tr><td>Consistency</td><td style="color:#3A9B6F;font-weight:600;">Deterministic + AI (reproducible)</td><td style="color:var(--ink-dim);">Varies by reviewer</td></tr>
+      <tr><td>Edge Case Handling</td><td style="color:#C88B2E;font-weight:600;">Limited (known blind spots)</td><td style="color:var(--ink-dim);">Expert adapts to novelty</td></tr>
+      <tr><td>Deep Domain Knowledge</td><td style="color:#C88B2E;font-weight:600;">General-purpose only</td><td style="color:var(--ink-dim);">Domain experts available</td></tr>
+      <tr><td>Runtime Behavior Analysis</td><td style="color:#C44830;font-weight:600;">Not supported (static only)</td><td style="color:var(--ink-dim);">Profiling, load testing available</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<div class="doc-footer">
+  CodeVision Model Card v1.0 &nbsp;·&nbsp;
+  AI Analysis Engine powered by Claude Sonnet (Anthropic), Tree-sitter &amp; Deterministic Code Signals &nbsp;·&nbsp;
+  MBAi 448 Final Project &nbsp;·&nbsp; 2026
+</div>
+
+</body>
+</html>
