@@ -119,7 +119,8 @@ export async function fetchRepoMetadata(
 export async function cloneRepo(
   repoUrl: string,
   jobId: string,
-  githubToken?: string
+  githubToken?: string,
+  options?: { branch?: string; commitSha?: string }
 ): Promise<RepoMetadata> {
   const cloneRoot = path.join(REPO_ROOT, jobId);
   const repoPath = path.join(cloneRoot, 'repo');
@@ -131,7 +132,22 @@ export async function cloneRepo(
   const cloneUrl = buildCloneUrl(repoUrl, githubToken);
 
   try {
-    await simpleGit().clone(cloneUrl, repoPath, ['--depth', '1', '--single-branch']);
+    const cloneArgs: string[] = ['--depth', '1', '--single-branch'];
+    if (options?.branch) {
+      cloneArgs.push('--branch', options.branch);
+    }
+    await simpleGit().clone(cloneUrl, repoPath, cloneArgs);
+
+    if (options?.commitSha) {
+      const git = simpleGit(repoPath);
+      try {
+        await git.checkout(options.commitSha);
+      } catch {
+        // Shallow clone may not have the commit; deepen and retry
+        await git.fetch(['--unshallow']);
+        await git.checkout(options.commitSha);
+      }
+    }
   } catch (error) {
     cleanupClone(jobId);
     throw new Error(

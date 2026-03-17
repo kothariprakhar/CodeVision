@@ -1,11 +1,12 @@
 import { getProject, updateProject } from '../repositories/projects';
 import { getDocumentsByProject } from '../repositories/documents';
-import { createAnalysisResult, deleteProjectAnalysis } from '../repositories/analysis';
+import { createAnalysisResult } from '../repositories/analysis';
 import { downloadRepository, cloneRepository, extractGitMetadata } from './github';
 import { parseAllDocuments } from './file-parser';
 import { analyzeCodeAlignment, readCodeFile } from './claude';
 import { generateBusinessLensArtifacts } from './lenses';
 import { cloneRepo, cleanupClone, fetchRepoMetadata } from './repo-ingestion';
+import { getPRHeadRef } from './github-refs';
 import { buildFileManifest, groupByModule, prioritizeFiles, INCLUDED_EXTENSIONS_LIST } from './chunker-service';
 import { runFullAnalysis } from './analysis-service';
 import type { FullAnalysis } from './analysis-service';
@@ -23,9 +24,15 @@ export interface AnalyzeProjectResult {
   analysisId?: string;
 }
 
+export interface AnalyzeRefOptions {
+  refType?: 'branch' | 'commit' | 'pr';
+  refValue?: string;
+}
+
 export interface AnalyzeProjectOptions {
   onProgress?: (event: { stage: string; progress: number; message: string }) => void;
   shouldCancel?: () => boolean;
+  ref?: AnalyzeRefOptions;
 }
 
 interface CloneMetadataSignals {
@@ -130,9 +137,6 @@ export async function analyzeProject(
     // Update status to analyzing
     await updateProject(projectId, { status: 'analyzing' });
 
-    // Delete previous analysis if exists
-    await deleteProjectAnalysis(projectId);
-
     // Parse all uploaded documents first
     const documentPaths = documents.map(doc => doc.file_path);
     const parsedDocs = await parseAllDocuments(documentPaths);
@@ -141,11 +145,38 @@ export async function analyzeProject(
       return { success: false, error: 'Failed to parse any documents' };
     }
 
+    // Resolve ref options for branch/commit/PR-aware cloning
+    const refOpts = options?.ref;
+    let resolvedBranch: string | undefined;
+    let resolvedCommitSha: string | undefined;
+    let refType: 'branch' | 'commit' | 'pr' | undefined;
+    let refLabel: string | undefined;
+
+    if (refOpts?.refType && refOpts.refValue) {
+      refType = refOpts.refType;
+      if (refOpts.refType === 'pr') {
+        const prNum = parseInt(refOpts.refValue, 10);
+        const prHead = await getPRHeadRef(project.github_url, project.github_token, prNum);
+        resolvedBranch = prHead.branch;
+        resolvedCommitSha = prHead.sha;
+        refLabel = `PR #${prNum}`;
+      } else if (refOpts.refType === 'branch') {
+        resolvedBranch = refOpts.refValue;
+        refLabel = refOpts.refValue;
+      } else if (refOpts.refType === 'commit') {
+        resolvedCommitSha = refOpts.refValue;
+        refLabel = refOpts.refValue.slice(0, 7);
+      }
+    }
+
     // Component 1: Intelligent repo ingestion with clone + prioritized manifest.
     let repoPath: string | null = null;
     try {
       assertNotCancelled();
-      const cloned = await cloneRepo(project.github_url, project.id, project.github_token);
+      const cloned = await cloneRepo(project.github_url, project.id, project.github_token, {
+        branch: resolvedBranch,
+        commitSha: resolvedCommitSha,
+      });
       repoPath = cloned.repo_path;
       shouldCleanupClone = true;
       cloneMetadataSignals = {
@@ -180,9 +211,14 @@ export async function analyzeProject(
         console.warn(metadataError instanceof Error ? metadataError.message : 'Unknown metadata error');
       }
 
-      let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id);
+      const downloadRef = resolvedBranch || resolvedCommitSha;
+      let downloadResult = await downloadRepository(project.github_url, project.github_token, project.id, {
+        ref: downloadRef,
+      });
       if (!downloadResult.success) {
-        downloadResult = await cloneRepository(project.github_url, project.github_token, project.id);
+        downloadResult = await cloneRepository(project.github_url, project.github_token, project.id, {
+          branch: resolvedBranch,
+        });
       }
       if (!downloadResult.success || !downloadResult.path) {
         await updateProject(projectId, { status: 'failed' });
@@ -371,6 +407,8 @@ export async function analyzeProject(
       branch: gitMetadata?.branch,
       commit_hash: gitMetadata?.commitHash,
       commit_url: gitMetadata?.commitUrl,
+      ref_type: refType,
+      ref_label: refLabel,
     });
 
     // Update project status

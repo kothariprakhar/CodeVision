@@ -85,6 +85,8 @@ export interface AnalysisResult {
   branch?: string;
   commit_hash?: string;
   commit_url?: string;
+  ref_type?: 'branch' | 'commit' | 'pr' | null;
+  ref_label?: string | null;
 }
 
 export interface Finding {

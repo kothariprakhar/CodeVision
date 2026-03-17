@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 const AnalyzeSchema = z.object({
   project_id: z.string().uuid('Invalid project ID'),
+  ref_type: z.enum(['branch', 'commit', 'pr']).optional(),
+  ref_value: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -50,7 +52,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Run analysis
-    const result = await analyzeProject(project_id);
+    const result = await analyzeProject(project_id, {
+      ref: parsed.data.ref_type && parsed.data.ref_value
+        ? { refType: parsed.data.ref_type, refValue: parsed.data.ref_value }
+        : undefined,
+    });
 
     if (!result.success) {
       return NextResponse.json(
