@@ -74,6 +74,28 @@ export interface VersionDiffSummary {
   tech_removed: number;
 }
 
+export interface FileDiff {
+  path: string;
+  status: DiffChangeType;
+  module_id?: string;
+}
+
+export interface BreakingChangeRisk {
+  module_id: string;
+  module_name: string;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  reason: string;
+  affected_dependents: string[];
+}
+
+export interface DependencyCascade {
+  changed_module_id: string;
+  changed_module_name: string;
+  directly_affected: string[];
+  transitively_affected: string[];
+  total_blast_radius: number;
+}
+
 export interface VersionDiffResult {
   from: VersionSnapshot;
   to: VersionSnapshot;
@@ -83,6 +105,9 @@ export interface VersionDiffResult {
   journey_changes: JourneyDiff[];
   risk_changes: RiskDiff[];
   tech_changes: TechDiff[];
+  file_changes: FileDiff[];
+  breaking_change_risks: BreakingChangeRisk[];
+  dependency_cascades: DependencyCascade[];
   business_impact_notes: string[];
   generated_at: string;
 }
@@ -470,6 +495,183 @@ function buildBusinessImpactNotes(
   return notes;
 }
 
+function calculateFileDiff(before: AnalysisResult, after: AnalysisResult): FileDiff[] {
+  const beforeFiles = new Map<string, string>();
+  const afterFiles = new Map<string, string>();
+
+  for (const node of before.architecture?.nodes || []) {
+    for (const file of node.files || []) {
+      beforeFiles.set(file, node.id);
+    }
+  }
+  for (const node of after.architecture?.nodes || []) {
+    for (const file of node.files || []) {
+      afterFiles.set(file, node.id);
+    }
+  }
+
+  const allFiles = new Set([...beforeFiles.keys(), ...afterFiles.keys()]);
+  const changes: FileDiff[] = [];
+
+  allFiles.forEach((filePath) => {
+    const inBefore = beforeFiles.has(filePath);
+    const inAfter = afterFiles.has(filePath);
+    if (!inBefore && inAfter) {
+      changes.push({ path: filePath, status: 'added', module_id: afterFiles.get(filePath) });
+    } else if (inBefore && !inAfter) {
+      changes.push({ path: filePath, status: 'removed', module_id: beforeFiles.get(filePath) });
+    } else if (inBefore && inAfter && beforeFiles.get(filePath) !== afterFiles.get(filePath)) {
+      changes.push({ path: filePath, status: 'modified', module_id: afterFiles.get(filePath) });
+    }
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { added: 0, removed: 1, modified: 2, unchanged: 3 } as const;
+    return (statusRank[a.status] - statusRank[b.status]) || a.path.localeCompare(b.path);
+  });
+}
+
+function assessBreakingChangeRisks(
+  moduleChanges: ModuleDiff[],
+  edgeChanges: EdgeDiff[],
+  allEdges: ArchitectureEdge[]
+): BreakingChangeRisk[] {
+  const risks: BreakingChangeRisk[] = [];
+  const changedModules = moduleChanges.filter(m => m.status === 'modified' || m.status === 'removed');
+
+  // Build reverse dependency map: who depends on each module
+  const dependents = new Map<string, Set<string>>();
+  for (const edge of allEdges) {
+    if (!dependents.has(edge.to)) dependents.set(edge.to, new Set());
+    dependents.get(edge.to)!.add(edge.from);
+  }
+
+  // Build module name lookup
+  const moduleNames = new Map<string, string>();
+  for (const m of moduleChanges) {
+    moduleNames.set(m.id, m.name);
+  }
+
+  for (const mod of changedModules) {
+    const deps = dependents.get(mod.id);
+    const depCount = deps?.size || 0;
+    if (depCount === 0 && mod.status === 'modified') continue;
+
+    const depNames = deps ? Array.from(deps).map(id => moduleNames.get(id) || id) : [];
+
+    let riskLevel: BreakingChangeRisk['risk_level'] = 'low';
+    let reason = '';
+
+    if (mod.status === 'removed') {
+      riskLevel = depCount > 0 ? 'critical' : 'high';
+      reason = depCount > 0
+        ? `Removed module had ${depCount} dependent(s) that may break`
+        : 'Module was removed from the codebase';
+    } else {
+      // Modified
+      const complexityChanged = mod.before?.complexity !== mod.after?.complexity;
+      const typeChanged = mod.before?.type !== mod.after?.type;
+
+      if (depCount >= 3 && (complexityChanged || typeChanged)) {
+        riskLevel = 'high';
+        reason = `High-connectivity module (${depCount} dependents) changed ${typeChanged ? 'type' : 'complexity'}`;
+      } else if (depCount >= 2) {
+        riskLevel = 'medium';
+        reason = `Modified module has ${depCount} dependent(s)`;
+      } else {
+        riskLevel = 'low';
+        reason = `Modified module with ${depCount} dependent(s)`;
+      }
+    }
+
+    risks.push({
+      module_id: mod.id,
+      module_name: mod.name,
+      risk_level: riskLevel,
+      reason,
+      affected_dependents: depNames,
+    });
+  }
+
+  return risks.sort((a, b) => {
+    const levelRank = { critical: 0, high: 1, medium: 2, low: 3 } as const;
+    return levelRank[a.risk_level] - levelRank[b.risk_level];
+  });
+}
+
+function buildDependencyCascades(
+  moduleChanges: ModuleDiff[],
+  allEdges: ArchitectureEdge[]
+): DependencyCascade[] {
+  const changedIds = new Set(
+    moduleChanges
+      .filter(m => m.status === 'modified' || m.status === 'added' || m.status === 'removed')
+      .map(m => m.id)
+  );
+
+  if (changedIds.size === 0) return [];
+
+  // Build forward dependency graph: who depends on each module (reverse edges)
+  const dependents = new Map<string, Set<string>>();
+  for (const edge of allEdges) {
+    if (!dependents.has(edge.to)) dependents.set(edge.to, new Set());
+    dependents.get(edge.to)!.add(edge.from);
+  }
+
+  const moduleNames = new Map<string, string>();
+  for (const m of moduleChanges) {
+    moduleNames.set(m.id, m.name);
+  }
+
+  const cascades: DependencyCascade[] = [];
+
+  for (const modId of changedIds) {
+    const directDeps = dependents.get(modId) || new Set<string>();
+    const directNames = Array.from(directDeps).map(id => moduleNames.get(id) || id);
+
+    // BFS for transitive dependents
+    const visited = new Set<string>([modId]);
+    const queue = Array.from(directDeps);
+    const transitiveDeps = new Set<string>();
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      const nextDeps = dependents.get(current);
+      if (nextDeps) {
+        for (const dep of nextDeps) {
+          if (!visited.has(dep)) {
+            transitiveDeps.add(dep);
+            queue.push(dep);
+          }
+        }
+      }
+    }
+
+    // Remove direct deps from transitive
+    for (const d of directDeps) {
+      transitiveDeps.delete(d);
+    }
+
+    const transitiveNames = Array.from(transitiveDeps).map(id => moduleNames.get(id) || id);
+    const totalBlast = directDeps.size + transitiveDeps.size;
+
+    if (totalBlast > 0) {
+      cascades.push({
+        changed_module_id: modId,
+        changed_module_name: moduleNames.get(modId) || modId,
+        directly_affected: directNames,
+        transitively_affected: transitiveNames,
+        total_blast_radius: totalBlast,
+      });
+    }
+  }
+
+  return cascades.sort((a, b) => b.total_blast_radius - a.total_blast_radius);
+}
+
 function getCachedDiff(cacheKey: string): VersionDiffResult | null {
   const record = diffCache.get(cacheKey);
   if (!record) return null;
@@ -497,6 +699,11 @@ export function buildVersionDiff(before: AnalysisResult, after: AnalysisResult):
   const journeyChanges = calculateJourneyDiff(before, after);
   const riskChanges = calculateRiskDiff(before, after);
   const techChanges = calculateTechDiff(before, after);
+  const fileChanges = calculateFileDiff(before, after);
+
+  const afterEdges = after.architecture?.edges || [];
+  const breakingChangeRisks = assessBreakingChangeRisks(moduleChanges, edgeChanges, afterEdges);
+  const dependencyCascades = buildDependencyCascades(moduleChanges, afterEdges);
 
   const risksIncreased = riskChanges.filter(change => {
     if (change.status !== 'modified') return false;
@@ -542,6 +749,9 @@ export function buildVersionDiff(before: AnalysisResult, after: AnalysisResult):
     journey_changes: journeyChanges,
     risk_changes: riskChanges,
     tech_changes: techChanges,
+    file_changes: fileChanges,
+    breaking_change_risks: breakingChangeRisks,
+    dependency_cascades: dependencyCascades,
     business_impact_notes: buildBusinessImpactNotes(moduleChanges, journeyChanges, riskChanges, techChanges),
     generated_at: new Date().toISOString(),
   };

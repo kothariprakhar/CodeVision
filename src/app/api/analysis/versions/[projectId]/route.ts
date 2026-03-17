@@ -44,6 +44,8 @@ export async function GET(
       commit_hash: version.commit_hash || null,
       commit_url: version.commit_url || null,
       summary: version.summary || null,
+      ref_type: version.ref_type || null,
+      ref_label: version.ref_label || null,
     }));
 
     return NextResponse.json({ versions: payload });

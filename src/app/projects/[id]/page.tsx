@@ -717,6 +717,7 @@ export default function ProjectDetail() {
               projectId={projectId}
               versions={versions}
               founderMode={founderMode}
+              githubUrl={project?.github_url}
             />
           )}
 

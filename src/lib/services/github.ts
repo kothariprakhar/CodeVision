@@ -65,7 +65,8 @@ export async function validateGitHubAccess(
 export async function downloadRepository(
   repoUrl: string,
   token: string,
-  projectId: string
+  projectId: string,
+  options?: { ref?: string }
 ): Promise<CloneResult> {
   try {
     // Extract owner/repo from URL
@@ -91,7 +92,8 @@ export async function downloadRepository(
     }
 
     // Download tarball from GitHub API
-    const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball`;
+    const refSuffix = options?.ref ? `/${options.ref}` : '';
+    const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball${refSuffix}`;
     console.log(`Fetching tarball from: ${tarballUrl}`);
 
     // Build headers - only include Authorization if token is provided
@@ -148,7 +150,8 @@ export async function downloadRepository(
 export async function cloneRepository(
   repoUrl: string,
   token: string,
-  projectId: string
+  projectId: string,
+  options?: { branch?: string }
 ): Promise<CloneResult> {
   // Ensure repos directory exists
   if (!fs.existsSync(REPOS_DIR)) {
@@ -174,10 +177,12 @@ export async function cloneRepository(
 
     const git: SimpleGit = simpleGit();
 
-    await git.clone(cloneUrl, clonePath, [
-      '--depth=1',
-      '--single-branch',
-    ]);
+    const cloneArgs = ['--depth=1', '--single-branch'];
+    if (options?.branch) {
+      cloneArgs.push(`--branch=${options.branch}`);
+    }
+
+    await git.clone(cloneUrl, clonePath, cloneArgs);
 
     return { success: true, path: clonePath };
   } catch (error) {

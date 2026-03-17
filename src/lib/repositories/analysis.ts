@@ -25,6 +25,8 @@ export interface CreateAnalysisInput {
   branch?: string;
   commit_hash?: string;
   commit_url?: string;
+  ref_type?: 'branch' | 'commit' | 'pr';
+  ref_label?: string;
 }
 
 export async function createAnalysis(input: CreateAnalysisInput): Promise<AnalysisResult> {
@@ -43,6 +45,8 @@ export async function createAnalysis(input: CreateAnalysisInput): Promise<Analys
     branch: input.branch,
     commit_hash: input.commit_hash,
     commit_url: input.commit_url,
+    ref_type: input.ref_type || null,
+    ref_label: input.ref_label || null,
   };
 
   const { data, error } = await supabase
@@ -142,6 +146,39 @@ export async function deleteProjectAnalysis(projectId: string): Promise<void> {
     .eq('project_id', projectId);
 
   if (error) throw new Error(`Failed to delete project analyses: ${error.message}`);
+}
+
+export async function getAnalysisByRef(
+  projectId: string,
+  refType: string,
+  refLabel: string
+): Promise<AnalysisResult | null> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('ref_type', refType)
+    .eq('ref_label', refLabel)
+    .order('analyzed_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) return null;
+  return data as AnalysisResult;
+}
+
+export async function getDefaultBranchAnalysis(projectId: string): Promise<AnalysisResult | null> {
+  const { data, error } = await supabase
+    .from('analysis_results')
+    .select('*')
+    .eq('project_id', projectId)
+    .is('ref_type', null)
+    .order('analyzed_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error) return null;
+  return data as AnalysisResult;
 }
 
 // Legacy function names for backward compatibility
