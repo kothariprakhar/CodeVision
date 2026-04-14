@@ -8,8 +8,13 @@ import { ChatMessage, ArchitectureVisualization, Finding } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { getProjectRepoPath, downloadRepository, cloneRepository } from './github';
 import { buildStarterQuestions } from './tech-risk-engine';
+import { buildFileManifest, prioritizeFiles, groupByModule, type FileEntry } from './chunker-service';
+import { parseFile } from './parser-service';
 
 const anthropic = new Anthropic();
+const LIVE_CONTEXT_MANIFEST_LIMIT = 180;
+const LIVE_CONTEXT_RELEVANT_FILE_LIMIT = 4;
+const LIVE_CONTEXT_EXCERPT_RADIUS = 8;
 
 export interface ElementContext {
   component?: string;
@@ -87,44 +92,167 @@ function selectRelevantModules(question: string, architecture: ArchitectureVisua
   return scored;
 }
 
-async function searchCodeFiles(repoPath: string, query: string): Promise<string[]> {
-  const results: string[] = [];
-  const searchTerms = extractKeywords(query);
+function formatTopCounts(counts: Record<string, number>, limit: number): string {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([label, count]) => `${label} (${count})`)
+    .join(', ');
+}
 
-  function walkDir(dir: string): void {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+function countBy<T extends string>(values: T[]): Record<string, number> {
+  return values.reduce<Record<string, number>>((acc, value) => {
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+}
 
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
+function scoreFileEntry(
+  entry: FileEntry,
+  questionTokens: string[],
+  emphasizedFiles: Set<string>
+): number {
+  const searchable = normalize([
+    entry.path,
+    entry.category,
+    entry.language,
+    ...entry.imports,
+    ...entry.exports,
+  ].join(' '));
 
-      if (entry.isDirectory()) {
-        const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next'];
-        if (!ignoreDirs.includes(entry.name)) {
-          walkDir(fullPath);
-        }
-      } else if (entry.isFile()) {
-        const ext = path.extname(entry.name).toLowerCase();
-        const codeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.java', '.rb', '.rs'];
+  let score = entry.priority_score * 6;
+  if (emphasizedFiles.has(entry.path)) score += 4;
+  for (const token of questionTokens) {
+    if (searchable.includes(token)) score += 2;
+  }
+  if (questionTokens.length === 0 && (entry.category === 'entry_point' || entry.category === 'route')) {
+    score += 1.5;
+  }
+  return score;
+}
 
-        if (codeExtensions.includes(ext)) {
-          try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
-            const lowerContent = content.toLowerCase();
-            if (searchTerms.some(term => lowerContent.includes(term))) {
-              const relativePath = path.relative(repoPath, fullPath);
-              const lines = content.split('\n').slice(0, 220).join('\n');
-              results.push(`File: ${relativePath}\n\`\`\`\n${lines}\n\`\`\``);
-            }
-          } catch {
-            // skip unreadable files
-          }
-        }
-      }
-    }
+function extractFocusedSnippet(content: string, searchTerms: string[]): string {
+  const lines = content.split('\n');
+  if (lines.length === 0) return '';
+
+  let matchIndex = -1;
+  if (searchTerms.length > 0) {
+    matchIndex = lines.findIndex(line =>
+      searchTerms.some(term => line.toLowerCase().includes(term))
+    );
   }
 
-  walkDir(repoPath);
-  return results.slice(0, 4);
+  const center = matchIndex >= 0 ? matchIndex : 0;
+  const start = Math.max(0, center - LIVE_CONTEXT_EXCERPT_RADIUS);
+  const end = Math.min(lines.length, center + LIVE_CONTEXT_EXCERPT_RADIUS + 1);
+
+  return lines
+    .slice(start, end)
+    .map((line, index) => `${start + index + 1}: ${line}`)
+    .join('\n');
+}
+
+function summarizeParsedFile(parsed: Awaited<ReturnType<typeof parseFile>>): string {
+  const functions = parsed.functions.map(item => item.name).slice(0, 5);
+  const classes = parsed.classes.map(item => item.name).slice(0, 4);
+  const exports = parsed.exports.slice(0, 5);
+  const imports = parsed.imports.map(item => item.target).slice(0, 5);
+
+  const parts = [
+    classes.length > 0 ? `classes=${classes.join(', ')}` : '',
+    functions.length > 0 ? `functions=${functions.join(', ')}` : '',
+    exports.length > 0 ? `exports=${exports.join(', ')}` : '',
+    imports.length > 0 ? `imports=${imports.join(', ')}` : '',
+  ].filter(Boolean);
+
+  return parts.join(' | ') || 'no strong symbols detected';
+}
+
+async function buildLatestRepoContext(
+  repoPath: string,
+  question: string,
+  architecture: ArchitectureVisualization
+): Promise<string> {
+  const manifest = prioritizeFiles(buildFileManifest(repoPath)).slice(0, LIVE_CONTEXT_MANIFEST_LIMIT);
+  if (manifest.length === 0) {
+    return 'Live repository context was requested, but no analyzable source files were found in the current repo snapshot.';
+  }
+
+  const grouped = groupByModule(manifest);
+  const languageCounts = countBy(manifest.map(entry => entry.language));
+  const categoryCounts = countBy(manifest.map(entry => entry.category));
+  const questionTokens = extractKeywords(question);
+  const emphasizedFiles = new Set(
+    (architecture.nodes || [])
+      .filter(node =>
+        questionTokens.some(token =>
+          normalize(`${node.name} ${node.description} ${(node.files || []).join(' ')}`).includes(token)
+        )
+      )
+      .flatMap(node => node.files || [])
+  );
+
+  const topModules = Object.entries(grouped)
+    .map(([moduleName, files]) => ({
+      moduleName,
+      files,
+      score: files.reduce((sum, file) => sum + file.priority_score, 0),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(group => {
+      const leadFiles = group.files
+        .slice()
+        .sort((a, b) => b.priority_score - a.priority_score)
+        .slice(0, 3)
+        .map(file => file.path)
+        .join(', ');
+      return `- ${group.moduleName}: ${group.files.length} files; lead files: ${leadFiles}`;
+    });
+
+  const relevantEntries = manifest
+    .map(entry => ({
+      entry,
+      score: scoreFileEntry(entry, questionTokens, emphasizedFiles),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, LIVE_CONTEXT_RELEVANT_FILE_LIMIT)
+    .map(item => item.entry);
+
+  const focusedFiles = await Promise.all(
+    relevantEntries.map(async entry => {
+      const fullPath = path.join(repoPath, entry.path);
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const parsed = await parseFile(entry.path, entry.language, content);
+      return {
+        entry,
+        parsed,
+        snippet: extractFocusedSnippet(content, questionTokens),
+      };
+    })
+  );
+
+  const focusedFileText = focusedFiles.map(({ entry, parsed, snippet }) => {
+    return [
+      `- File: ${entry.path}`,
+      `  category=${entry.category}; language=${entry.language}; priority=${entry.priority_score.toFixed(2)}`,
+      `  structural_signals: ${summarizeParsedFile(parsed)}`,
+      '  excerpt:',
+      `\`\`\`\n${snippet}\n\`\`\``,
+    ].join('\n');
+  }).join('\n\n');
+
+  return [
+    'Live repository context (built at answer time from the current repo snapshot):',
+    `- files_scanned=${manifest.length}`,
+    `- languages=${formatTopCounts(languageCounts, 6)}`,
+    `- categories=${formatTopCounts(categoryCounts, 6)}`,
+    '- top_modules:',
+    ...(topModules.length > 0 ? topModules : ['- none']),
+    '',
+    'Question-focused current code context:',
+    focusedFileText || '- No strongly relevant files found in the current repo snapshot.',
+  ].join('\n');
 }
 
 function determineResponseType(question: string): 'quick' | 'detailed' {
@@ -213,11 +341,16 @@ export async function chat(
   const starterQuestions = buildStarterQuestions(analysis);
   const fallbackModules = selectRelevantModules(message, context.architecture);
 
-  let codeContext = '';
+  let liveRepoContext = '';
   if (context.repoPath) {
-    const codeResults = await searchCodeFiles(context.repoPath, message);
-    if (codeResults.length > 0) {
-      codeContext = `\n\nRelevant code snippets:\n${codeResults.join('\n\n')}`;
+    try {
+      const latestContext = await buildLatestRepoContext(context.repoPath, message, context.architecture);
+      liveRepoContext = latestContext ? `\n\n${latestContext}` : '';
+    } catch (error) {
+      console.warn(
+        'Failed to build live repository context for chat:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     }
   }
 
@@ -247,7 +380,7 @@ Rules:
 Project summary:\n${context.summary}
 
 Modules (use names only, do not mention technical details):\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.name}: ${node.description || ''}`).join('\n')}
-${contextHint}
+${contextHint}${liveRepoContext}
 ${responseType === 'quick' ? '\nBe concise and punchy.' : '\nBe thorough but always jargon-free.'}`
     : `You are a senior software engineer doing a deep technical review of a codebase with a colleague.
 
@@ -272,7 +405,7 @@ Project summary:\n${context.summary}
 Architecture modules:\n${(context.architecture.nodes || []).slice(0, 40).map(node => `- ${node.id}: ${node.name} (${node.type}) — ${node.description || ''}`).join('\n')}
 
 Risk highlights:\n${(context.findings || []).slice(0, 8).map(finding => `- ${finding.severity.toUpperCase()}: ${finding.title}`).join('\n')}
-${contextHint}${codeContext}
+${contextHint}${liveRepoContext}
 ${responseType === 'quick' ? '\nPrioritize concise directness.' : '\nPrioritize depth, trade-offs, and implementation specifics.'}`;
 
 
