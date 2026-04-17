@@ -3,6 +3,7 @@ import { getAnalysisById, getProjectAnalysisVersions } from '@/lib/repositories/
 import { getProject } from '@/lib/repositories/projects';
 import { getUserFromRequest } from '@/lib/auth';
 import { buildVersionDiff } from '@/lib/services/version-diff';
+import { generateDiffNarrative } from '@/lib/services/diff-narrative';
 
 export async function GET(
   request: NextRequest,
@@ -59,10 +60,24 @@ export async function GET(
     }
 
     const diff = buildVersionDiff(fromAnalysis, toAnalysis);
-    return NextResponse.json({
+
+    // Opt-in narrative. Default OFF so existing clients remain byte-identical.
+    const includeNarrative = searchParams.get('include_narrative') === 'true';
+    const responseBody: {
+      project_id: string;
+      diff: typeof diff;
+      narrative?: Awaited<ReturnType<typeof generateDiffNarrative>>;
+    } = {
       project_id: projectId,
       diff,
-    });
+    };
+
+    if (includeNarrative) {
+      // generateDiffNarrative never throws — it falls back deterministically on any failure.
+      responseBody.narrative = await generateDiffNarrative(diff);
+    }
+
+    return NextResponse.json(responseBody);
   } catch (error) {
     console.error('analysis/diff error:', error);
     return NextResponse.json({ error: 'Failed to compute version diff' }, { status: 500 });
