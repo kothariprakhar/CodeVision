@@ -2,7 +2,9 @@ import type {
   AnalysisResult,
   ArchitectureEdge,
   ArchitectureNode,
+  CapabilityNode,
   Journey,
+  JourneyStep,
 } from '@/lib/db';
 
 export type DiffChangeType = 'added' | 'removed' | 'modified' | 'unchanged';
@@ -96,6 +98,59 @@ export interface DependencyCascade {
   total_blast_radius: number;
 }
 
+export interface CapabilitySnapshot {
+  description: string;
+  business_value: string;
+  maturity: CapabilityNode['maturity'];
+  owner_role?: string;
+}
+
+export interface CapabilityDiff {
+  id: string;
+  name: string;
+  status: DiffChangeType;
+  node_type: CapabilityNode['node_type'];
+  domain_name?: string;
+  reasons: string[];
+  before?: CapabilitySnapshot;
+  after?: CapabilitySnapshot;
+}
+
+export interface ValueFeatureDiff {
+  name: string;
+  status: DiffChangeType;
+  description_before?: string;
+  description_after?: string;
+  business_impact_before?: string;
+  business_impact_after?: string;
+  modules_added: string[];
+  modules_removed: string[];
+}
+
+export interface JourneyStepChange {
+  step_id?: string;
+  order: number;
+  name: string;
+  change: 'added' | 'removed' | 'modified' | 'reordered';
+  before_description?: string;
+  after_description?: string;
+  friction_before?: JourneyStep['friction_risk'];
+  friction_after?: JourneyStep['friction_risk'];
+  systems_added?: string[];
+  systems_removed?: string[];
+}
+
+export interface JourneyStoryboard {
+  journey_id: string;
+  journey_name: string;
+  persona?: string;
+  before_step_count: number;
+  after_step_count: number;
+  step_changes: JourneyStepChange[];
+  headline: string;
+  status: DiffChangeType;
+}
+
 export interface VersionDiffResult {
   from: VersionSnapshot;
   to: VersionSnapshot;
@@ -109,6 +164,10 @@ export interface VersionDiffResult {
   breaking_change_risks: BreakingChangeRisk[];
   dependency_cascades: DependencyCascade[];
   business_impact_notes: string[];
+  // Phase-1 additions — stakeholder-facing diffs. Optional for back-compat with older clients.
+  capability_changes?: CapabilityDiff[];
+  value_feature_changes?: ValueFeatureDiff[];
+  journey_storyboards?: JourneyStoryboard[];
   generated_at: string;
 }
 
@@ -459,6 +518,377 @@ function severityWeight(severity: string): number {
   return 1;
 }
 
+function capabilityKey(node: CapabilityNode): string {
+  return node.id || normalize(node.name);
+}
+
+function capabilitySnapshot(node: CapabilityNode): CapabilitySnapshot {
+  return {
+    description: node.description || '',
+    business_value: node.business_value || '',
+    maturity: node.maturity,
+    owner_role: node.owner_role,
+  };
+}
+
+function capabilityReasons(before: CapabilityNode, after: CapabilityNode): string[] {
+  const reasons: string[] = [];
+  if ((before.description || '') !== (after.description || '')) reasons.push('Description changed');
+  if ((before.business_value || '') !== (after.business_value || '')) reasons.push('Business value changed');
+  if (before.maturity !== after.maturity) reasons.push(`Maturity ${before.maturity} → ${after.maturity}`);
+  if ((before.owner_role || '') !== (after.owner_role || '')) reasons.push('Owner role changed');
+  if (hashSet(before.kpis || []) !== hashSet(after.kpis || [])) reasons.push('KPI set changed');
+  return reasons;
+}
+
+function resolveCapabilityDomain(
+  nodeId: string,
+  nodes: CapabilityNode[],
+  edges: Array<{ from: string; to: string; relation: string }>
+): string | undefined {
+  // A capability domain is depth 0; walk `contains` edges upward.
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const containerOf = new Map<string, string>();
+  for (const edge of edges) {
+    if (edge.relation === 'contains') {
+      // edge.from contains edge.to → so edge.to's container is edge.from
+      containerOf.set(edge.to, edge.from);
+    }
+  }
+  let currentId: string | undefined = nodeId;
+  const visited = new Set<string>();
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const node = byId.get(currentId);
+    if (!node) break;
+    if (node.node_type === 'capability_domain' || node.depth === 0) return node.name;
+    currentId = containerOf.get(currentId);
+  }
+  return undefined;
+}
+
+function calculateCapabilityDiff(before: AnalysisResult, after: AnalysisResult): CapabilityDiff[] {
+  const beforeNodes = before.capability_graph?.nodes || [];
+  const afterNodes = after.capability_graph?.nodes || [];
+  if (beforeNodes.length === 0 && afterNodes.length === 0) return [];
+
+  const beforeEdges = before.capability_graph?.edges || [];
+  const afterEdges = after.capability_graph?.edges || [];
+
+  const beforeMap = new Map(beforeNodes.map(n => [capabilityKey(n), n]));
+  const afterMap = new Map(afterNodes.map(n => [capabilityKey(n), n]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const changes: CapabilityDiff[] = [];
+  keys.forEach((key) => {
+    const beforeNode = beforeMap.get(key);
+    const afterNode = afterMap.get(key);
+
+    if (!beforeNode && afterNode) {
+      changes.push({
+        id: afterNode.id,
+        name: afterNode.name,
+        status: 'added',
+        node_type: afterNode.node_type,
+        domain_name: resolveCapabilityDomain(afterNode.id, afterNodes, afterEdges),
+        reasons: ['New capability introduced'],
+        after: capabilitySnapshot(afterNode),
+      });
+      return;
+    }
+    if (beforeNode && !afterNode) {
+      changes.push({
+        id: beforeNode.id,
+        name: beforeNode.name,
+        status: 'removed',
+        node_type: beforeNode.node_type,
+        domain_name: resolveCapabilityDomain(beforeNode.id, beforeNodes, beforeEdges),
+        reasons: ['Capability removed'],
+        before: capabilitySnapshot(beforeNode),
+      });
+      return;
+    }
+    if (!beforeNode || !afterNode) return;
+
+    const reasons = capabilityReasons(beforeNode, afterNode);
+    changes.push({
+      id: afterNode.id,
+      name: afterNode.name,
+      status: reasons.length ? 'modified' : 'unchanged',
+      node_type: afterNode.node_type,
+      domain_name: resolveCapabilityDomain(afterNode.id, afterNodes, afterEdges),
+      reasons,
+      before: capabilitySnapshot(beforeNode),
+      after: capabilitySnapshot(afterNode),
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function calculateValueFeatureDiff(before: AnalysisResult, after: AnalysisResult): ValueFeatureDiff[] {
+  const beforeFeatures = before.business_context?.value_features || [];
+  const afterFeatures = after.business_context?.value_features || [];
+  if (beforeFeatures.length === 0 && afterFeatures.length === 0) return [];
+
+  const beforeMap = new Map(beforeFeatures.map(f => [normalize(f.name), f]));
+  const afterMap = new Map(afterFeatures.map(f => [normalize(f.name), f]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const changes: ValueFeatureDiff[] = [];
+  keys.forEach((key) => {
+    const beforeFeature = beforeMap.get(key);
+    const afterFeature = afterMap.get(key);
+
+    if (!beforeFeature && afterFeature) {
+      changes.push({
+        name: afterFeature.name,
+        status: 'added',
+        description_after: afterFeature.description,
+        business_impact_after: afterFeature.business_impact,
+        modules_added: [...(afterFeature.modules_involved || [])],
+        modules_removed: [],
+      });
+      return;
+    }
+    if (beforeFeature && !afterFeature) {
+      changes.push({
+        name: beforeFeature.name,
+        status: 'removed',
+        description_before: beforeFeature.description,
+        business_impact_before: beforeFeature.business_impact,
+        modules_added: [],
+        modules_removed: [...(beforeFeature.modules_involved || [])],
+      });
+      return;
+    }
+    if (!beforeFeature || !afterFeature) return;
+
+    const beforeModules = new Set(beforeFeature.modules_involved || []);
+    const afterModules = new Set(afterFeature.modules_involved || []);
+    const added = [...afterModules].filter(m => !beforeModules.has(m));
+    const removed = [...beforeModules].filter(m => !afterModules.has(m));
+    const textChanged = (beforeFeature.description || '') !== (afterFeature.description || '')
+      || (beforeFeature.business_impact || '') !== (afterFeature.business_impact || '');
+    const status: DiffChangeType = (added.length || removed.length || textChanged) ? 'modified' : 'unchanged';
+
+    changes.push({
+      name: afterFeature.name,
+      status,
+      description_before: beforeFeature.description,
+      description_after: afterFeature.description,
+      business_impact_before: beforeFeature.business_impact,
+      business_impact_after: afterFeature.business_impact,
+      modules_added: added,
+      modules_removed: removed,
+    });
+  });
+
+  return changes.sort((a, b) => {
+    const statusRank = { added: 0, modified: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function stepKey(step: JourneyStep): string {
+  return step.id || `${step.order}:${normalize(step.name)}`;
+}
+
+function buildJourneyStoryboard(
+  beforeJourney: Journey | undefined,
+  afterJourney: Journey | undefined
+): JourneyStoryboard | null {
+  if (!beforeJourney && !afterJourney) return null;
+
+  if (!beforeJourney && afterJourney) {
+    const stepChanges: JourneyStepChange[] = afterJourney.steps
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map(step => ({
+        step_id: step.id,
+        order: step.order,
+        name: step.name,
+        change: 'added',
+        after_description: step.description,
+        friction_after: step.friction_risk,
+        systems_added: step.systems_touched || [],
+      }));
+    return {
+      journey_id: afterJourney.id,
+      journey_name: afterJourney.name,
+      persona: afterJourney.persona,
+      before_step_count: 0,
+      after_step_count: afterJourney.steps.length,
+      step_changes: stepChanges,
+      headline: `New journey "${afterJourney.name}" with ${afterJourney.steps.length} step${afterJourney.steps.length === 1 ? '' : 's'}.`,
+      status: 'added',
+    };
+  }
+
+  if (beforeJourney && !afterJourney) {
+    const stepChanges: JourneyStepChange[] = beforeJourney.steps
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map(step => ({
+        step_id: step.id,
+        order: step.order,
+        name: step.name,
+        change: 'removed',
+        before_description: step.description,
+        friction_before: step.friction_risk,
+        systems_removed: step.systems_touched || [],
+      }));
+    return {
+      journey_id: beforeJourney.id,
+      journey_name: beforeJourney.name,
+      persona: beforeJourney.persona,
+      before_step_count: beforeJourney.steps.length,
+      after_step_count: 0,
+      step_changes: stepChanges,
+      headline: `Journey "${beforeJourney.name}" was removed.`,
+      status: 'removed',
+    };
+  }
+
+  if (!beforeJourney || !afterJourney) return null;
+
+  const beforeMap = new Map(beforeJourney.steps.map(s => [stepKey(s), s]));
+  const afterMap = new Map(afterJourney.steps.map(s => [stepKey(s), s]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const stepChanges: JourneyStepChange[] = [];
+  keys.forEach((key) => {
+    const beforeStep = beforeMap.get(key);
+    const afterStep = afterMap.get(key);
+
+    if (!beforeStep && afterStep) {
+      stepChanges.push({
+        step_id: afterStep.id,
+        order: afterStep.order,
+        name: afterStep.name,
+        change: 'added',
+        after_description: afterStep.description,
+        friction_after: afterStep.friction_risk,
+        systems_added: afterStep.systems_touched || [],
+      });
+      return;
+    }
+    if (beforeStep && !afterStep) {
+      stepChanges.push({
+        step_id: beforeStep.id,
+        order: beforeStep.order,
+        name: beforeStep.name,
+        change: 'removed',
+        before_description: beforeStep.description,
+        friction_before: beforeStep.friction_risk,
+        systems_removed: beforeStep.systems_touched || [],
+      });
+      return;
+    }
+    if (!beforeStep || !afterStep) return;
+
+    const reorderedOnly =
+      beforeStep.order !== afterStep.order
+      && (beforeStep.description || '') === (afterStep.description || '')
+      && beforeStep.friction_risk === afterStep.friction_risk
+      && hashSet(beforeStep.systems_touched || []) === hashSet(afterStep.systems_touched || []);
+
+    const descriptionChanged = (beforeStep.description || '') !== (afterStep.description || '');
+    const frictionChanged = beforeStep.friction_risk !== afterStep.friction_risk;
+    const beforeSystems = new Set(beforeStep.systems_touched || []);
+    const afterSystems = new Set(afterStep.systems_touched || []);
+    const systemsAdded = [...afterSystems].filter(s => !beforeSystems.has(s));
+    const systemsRemoved = [...beforeSystems].filter(s => !afterSystems.has(s));
+    const orderChanged = beforeStep.order !== afterStep.order;
+
+    if (reorderedOnly) {
+      stepChanges.push({
+        step_id: afterStep.id,
+        order: afterStep.order,
+        name: afterStep.name,
+        change: 'reordered',
+      });
+      return;
+    }
+
+    if (descriptionChanged || frictionChanged || systemsAdded.length || systemsRemoved.length || orderChanged) {
+      stepChanges.push({
+        step_id: afterStep.id,
+        order: afterStep.order,
+        name: afterStep.name,
+        change: 'modified',
+        before_description: beforeStep.description,
+        after_description: afterStep.description,
+        friction_before: beforeStep.friction_risk,
+        friction_after: afterStep.friction_risk,
+        systems_added: systemsAdded,
+        systems_removed: systemsRemoved,
+      });
+    }
+  });
+
+  stepChanges.sort((a, b) => a.order - b.order);
+
+  const addedCount = stepChanges.filter(c => c.change === 'added').length;
+  const removedCount = stepChanges.filter(c => c.change === 'removed').length;
+  const modifiedCount = stepChanges.filter(c => c.change === 'modified').length;
+  const reorderedCount = stepChanges.filter(c => c.change === 'reordered').length;
+
+  const parts: string[] = [];
+  if (addedCount) parts.push(`${addedCount} step${addedCount === 1 ? '' : 's'} added`);
+  if (removedCount) parts.push(`${removedCount} removed`);
+  if (modifiedCount) parts.push(`${modifiedCount} modified`);
+  if (reorderedCount) parts.push(`${reorderedCount} reordered`);
+
+  const status: DiffChangeType = stepChanges.length ? 'modified' : 'unchanged';
+  const headline = stepChanges.length
+    ? `"${afterJourney.name}" — ${parts.join(', ')}.`
+    : `"${afterJourney.name}" — no step-level changes.`;
+
+  return {
+    journey_id: afterJourney.id,
+    journey_name: afterJourney.name,
+    persona: afterJourney.persona,
+    before_step_count: beforeJourney.steps.length,
+    after_step_count: afterJourney.steps.length,
+    step_changes: stepChanges,
+    headline,
+    status,
+  };
+}
+
+function buildJourneyStoryboards(before: AnalysisResult, after: AnalysisResult): JourneyStoryboard[] {
+  const beforeJourneys = before.journey_graph?.journeys || [];
+  const afterJourneys = after.journey_graph?.journeys || [];
+  if (beforeJourneys.length === 0 && afterJourneys.length === 0) return [];
+
+  const beforeMap = new Map(beforeJourneys.map(j => [j.id || normalize(j.name), j]));
+  const afterMap = new Map(afterJourneys.map(j => [j.id || normalize(j.name), j]));
+  const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+
+  const storyboards: JourneyStoryboard[] = [];
+  keys.forEach((key) => {
+    const storyboard = buildJourneyStoryboard(beforeMap.get(key), afterMap.get(key));
+    if (storyboard && storyboard.status !== 'unchanged') {
+      storyboards.push(storyboard);
+    }
+  });
+
+  return storyboards.sort((a, b) => {
+    const statusRank = { modified: 0, added: 1, removed: 2, unchanged: 3 } as const;
+    const rankDiff = statusRank[a.status] - statusRank[b.status];
+    if (rankDiff !== 0) return rankDiff;
+    return b.step_changes.length - a.step_changes.length;
+  });
+}
+
 function buildBusinessImpactNotes(
   moduleChanges: ModuleDiff[],
   journeyChanges: JourneyDiff[],
@@ -705,6 +1135,11 @@ export function buildVersionDiff(before: AnalysisResult, after: AnalysisResult):
   const breakingChangeRisks = assessBreakingChangeRisks(moduleChanges, edgeChanges, afterEdges);
   const dependencyCascades = buildDependencyCascades(moduleChanges, afterEdges);
 
+  // Phase-1 additions — stakeholder-facing diffs. Safe when source graphs absent.
+  const capabilityChanges = calculateCapabilityDiff(before, after);
+  const valueFeatureChanges = calculateValueFeatureDiff(before, after);
+  const journeyStoryboards = buildJourneyStoryboards(before, after);
+
   const risksIncreased = riskChanges.filter(change => {
     if (change.status !== 'modified') return false;
     return severityWeight(change.severity_after || 'low') > severityWeight(change.severity_before || 'low');
@@ -753,6 +1188,9 @@ export function buildVersionDiff(before: AnalysisResult, after: AnalysisResult):
     breaking_change_risks: breakingChangeRisks,
     dependency_cascades: dependencyCascades,
     business_impact_notes: buildBusinessImpactNotes(moduleChanges, journeyChanges, riskChanges, techChanges),
+    capability_changes: capabilityChanges.length ? capabilityChanges : undefined,
+    value_feature_changes: valueFeatureChanges.length ? valueFeatureChanges : undefined,
+    journey_storyboards: journeyStoryboards.length ? journeyStoryboards : undefined,
     generated_at: new Date().toISOString(),
   };
 
